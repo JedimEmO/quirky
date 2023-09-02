@@ -1,10 +1,11 @@
 [workspace.dependencies]
+async-trait = "0.1.72"
 bytemuck = { version = "1.13.1", features = ["derive"] }
 futures = "0.3.28"
 futures-signals = "0.3.32"
 futures-signals-utils = { git = "https://github.com/JedimEmO/dmat.git", rev = "9df70867f058667ff64b7330d1a5449ba19be5c5" }
 glam = "0.24.1"
-tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "time"] }
 winit = "0.28.6"
 wgpu = "0.17.0"
 

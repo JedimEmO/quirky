@@ -1,16 +1,20 @@
-use std::{iter};
-use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use futures_signals::signal::Mutable;
-use futures_signals::signal_vec::MutableVec;
-use glam::{UVec2, uvec2, vec2, vec3, Vec3, Vec4};
+use futures_signals::signal::SignalExt;
+
+use glam::{uvec2, vec3, UVec2, Vec4};
+use quirky::LayoutBox;
+use std::iter;
+use std::sync::{Arc, Mutex};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder, Device, include_wgsl, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState};
+use wgpu::{
+    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder,
+    Device, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
+};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-use quirky::LayoutBox;
-use futures_signals::signal::SignalExt;
 
 #[tokio::main]
 async fn main() {
@@ -34,14 +38,22 @@ async fn main() {
         .await
         .unwrap();
 
-    let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-        label: None,
-        features: wgpu::Features::empty(),
-        limits: wgpu::Limits::default(),
-    }, None).await.unwrap();
+    let (device, queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                features: wgpu::Features::empty(),
+                limits: wgpu::Limits::default(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
 
     let surface_caps = surface.get_capabilities(&adapter);
-    let surface_format = surface_caps.formats.iter()
+    let surface_format = surface_caps
+        .formats
+        .iter()
         .copied()
         .find(|f| f.is_srgb())
         .unwrap_or(surface_caps.formats[0]);
@@ -57,7 +69,7 @@ async fn main() {
     };
 
     surface.configure(&device, &config);
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    let _pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
         bind_group_layouts: &[],
         push_constant_ranges: &[],
@@ -93,7 +105,10 @@ async fn main() {
     let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
         label: None,
         layout: &camera_bind_group_layout,
-        entries: &[BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() }],
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: camera_buffer.as_entire_binding(),
+        }],
     });
 
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -137,7 +152,12 @@ async fn main() {
     let num_quads = Mutable::new(3);
 
     let boxes_to_draw = num_quads.signal().map(|count| {
-        (0..count).map(|c| LayoutBox { pos: uvec2(10, 10 + 30 * c), size: uvec2(100, 20) }).collect::<Vec<_>>()
+        (0..count)
+            .map(|c| LayoutBox {
+                pos: uvec2(10, 10 + 30 * c),
+                size: uvec2(100, 20),
+            })
+            .collect::<Vec<_>>()
     });
 
     let mut quads: Vec<Quad> = vec![];
@@ -146,17 +166,17 @@ async fn main() {
 
     tokio::spawn({
         let requested_boxes = requested_boxes.clone();
-        (async move {
+        async move {
             let mut strm = boxes_to_draw.to_stream();
             while let Some(b) = strm.next().await {
                 let requested_boxes = requested_boxes.clone();
 
                 let mut lock = requested_boxes.lock().unwrap();
 
-                lock.insert(b);
+                let _ = lock.insert(b);
                 elproxy.send_event(()).unwrap();
             }
-        })
+        }
     });
 
     event_loop.run(move |event, _, control_flow| {
@@ -174,17 +194,24 @@ async fn main() {
                         surface.configure(&device, &config);
                         ui_camera.resize_viewport(UVec2::new(config.width, config.height));
                         let camera_uniform = ui_camera.create_camera_uniform();
-                        queue.write_buffer(&camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]))
+                        queue.write_buffer(
+                            &camera_buffer,
+                            0,
+                            bytemuck::cast_slice(&[camera_uniform]),
+                        )
                     }
                 }
                 _ => {}
             },
-            Event::RedrawRequested(d) => {
+            Event::RedrawRequested(_d) => {
                 let output = surface.get_current_texture().unwrap();
-                let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = output
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
-
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hi there") });
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("hi there"),
+                });
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -211,9 +238,12 @@ async fn main() {
                     if let Some(incoming_boxes) = requested_boxes.lock().unwrap().take() {
                         quads.clear();
 
-                        quads.append(&mut incoming_boxes.into_iter().map(|b| {
-                            Quad::new(&device, b.pos, b.size)
-                        }).collect::<Vec<_>>())
+                        quads.append(
+                            &mut incoming_boxes
+                                .into_iter()
+                                .map(|b| Quad::new(&device, b.pos, b.size))
+                                .collect::<Vec<_>>(),
+                        )
                     }
 
                     for quad in quads.iter() {
@@ -236,16 +266,22 @@ pub struct UiAppSettings {
 
 pub fn ui_render_pass(target_texture: &Texture, device: &Device, ui_app_settings: &UiAppSettings) {
     let view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hi there") });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("hi there"),
+    });
 
-    let mut render_pass = clear_render_pass(&mut encoder, &view, ui_app_settings.background_color);
+    let _render_pass = clear_render_pass(&mut encoder, &view, ui_app_settings.background_color);
 }
 
-pub fn clear_render_pass<'a>(encoder: &'a mut CommandEncoder, view: &'a TextureView, color: Color) -> RenderPass<'a> {
+pub fn clear_render_pass<'a>(
+    encoder: &'a mut CommandEncoder,
+    view: &'a TextureView,
+    color: Color,
+) -> RenderPass<'a> {
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: None,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &view,
+            view,
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(color),
@@ -256,7 +292,7 @@ pub fn clear_render_pass<'a>(encoder: &'a mut CommandEncoder, view: &'a TextureV
     })
 }
 
-fn draw_quads(quads: &[Quad], render_pass: &mut RenderPass, device: &Device) {}
+fn draw_quads(_quads: &[Quad], _render_pass: &mut RenderPass, _device: &Device) {}
 
 #[derive(bytemuck::Zeroable, bytemuck::Pod, Copy, Clone)]
 #[repr(C)]
@@ -295,10 +331,18 @@ impl Quad {
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad buffer"),
             contents: bytemuck::cast_slice(&[
-                Vertex { pos: [left_x, top_y] },
-                Vertex { pos: [right_x, top_y] },
-                Vertex { pos: [right_x, bottom_y] },
-                Vertex { pos: [left_x, bottom_y] },
+                Vertex {
+                    pos: [left_x, top_y],
+                },
+                Vertex {
+                    pos: [right_x, top_y],
+                },
+                Vertex {
+                    pos: [right_x, bottom_y],
+                },
+                Vertex {
+                    pos: [left_x, bottom_y],
+                },
             ]),
             usage: wgpu::BufferUsages::VERTEX,
         });
@@ -309,10 +353,7 @@ impl Quad {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        Self {
-            vertices,
-            indexes,
-        }
+        Self { vertices, indexes }
     }
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
@@ -337,7 +378,7 @@ struct UiCamera2D {
 impl UiCamera2D {
     pub fn create_camera_uniform(&self) -> UiCameraUniform {
         UiCameraUniform {
-            transform: self.transform.to_cols_array_2d()
+            transform: self.transform.to_cols_array_2d(),
         }
     }
 
@@ -370,8 +411,8 @@ impl UiCamera2D {
 mod test {
     use quirky::assert_f32_eq;
 
-    use glam::{UVec2, vec3, Vec3, Vec4, vec4};
     use crate::UiCamera2D;
+    use glam::{vec4, UVec2, Vec4};
 
     #[test]
     fn test_camera_transform() {
@@ -404,3 +445,4 @@ mod test {
         assert_f32_eq!(pixel_coord_rev.y, pixel_coord.y, "rev px y");
     }
 }
+
