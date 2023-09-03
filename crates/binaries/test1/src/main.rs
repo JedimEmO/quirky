@@ -1,9 +1,15 @@
-use futures::StreamExt;
-use futures_signals::signal::Mutable;
+use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use futures_signals::signal::SignalExt;
+use futures_signals::signal::{Mutable, Signal};
+use std::future::Future;
 
+use futures::stream::FuturesUnordered;
+use futures_signals::map_ref;
+use futures_signals::signal_vec::{MutableVec, SignalVecExt};
 use glam::{uvec2, vec3, UVec2, Vec4};
-use quirky::LayoutBox;
+use quirky::drawables::Drawable;
+use quirky::widgets::{List, Slab};
+use quirky::{clone, run_widgets, LayoutBox, SizeConstraint, Widget};
 use std::iter;
 use std::sync::{Arc, Mutex};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -15,6 +21,49 @@ use wgpu::{
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
+
+#[async_recursion::async_recursion]
+async fn drawable_tree_watch_inner(
+    drawables: MutableVec<Drawable>,
+    mut tx: futures::channel::mpsc::Sender<()>,
+) {
+    let mut drawables_stream = drawables.signal_vec_cloned().to_signal_cloned().to_stream();
+    let mut futures = FuturesUnordered::new();
+
+    loop {
+        let mut next_drawables = drawables_stream.next().fuse();
+        let mut next_unordered = futures.next().fuse();
+
+        println!("waiting for drawables");
+
+        select! {
+                drawables = next_drawables => {
+                    tx.send(()).await.expect("failed to send drawables notification");
+                    futures = FuturesUnordered::new();
+                    if let Some(drawables) = drawables {
+                        for drawable in drawables {
+                            match drawable {
+                                Drawable::SubTree{children, ..} => {
+                                    futures.push(drawable_tree_watch_inner(children.clone(), tx.clone()));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+            }
+        }
+    }
+}
+
+pub fn drawable_tree_watch(
+    widgets: MutableVec<Drawable>,
+) -> (impl Stream<Item = ()>, impl Future<Output = ()>) {
+    let (mut tx, rx) = futures::channel::mpsc::channel(100);
+
+    let fut = drawable_tree_watch_inner(widgets, tx);
+
+    (rx, fut)
+}
 
 #[tokio::main]
 async fn main() {
@@ -151,33 +200,52 @@ async fn main() {
 
     let num_quads = Mutable::new(3);
 
-    let boxes_to_draw = num_quads.signal().map(|count| {
-        (0..count)
-            .map(|c| LayoutBox {
-                pos: uvec2(10, 10 + 30 * c),
-                size: uvec2(100, 20),
-            })
-            .collect::<Vec<_>>()
-    });
-
     let mut quads: Vec<Quad> = vec![];
-    let requested_boxes = Arc::new(Mutex::<Option<Vec<LayoutBox>>>::new(None));
+    let requested_drawables = Arc::new(Mutex::<Option<Vec<Drawable>>>::new(None));
     let elproxy = event_loop.create_proxy();
 
-    tokio::spawn({
-        let requested_boxes = requested_boxes.clone();
-        async move {
-            let mut strm = boxes_to_draw.to_stream();
-            while let Some(b) = strm.next().await {
-                let requested_boxes = requested_boxes.clone();
-
-                let mut lock = requested_boxes.lock().unwrap();
-
-                let _ = lock.insert(b);
-                elproxy.send_event(()).unwrap();
+    let list = Arc::new(List {
+        children: Mutable::new((0..5).map(|i| {
+            if i % 2 == 0 {
+                Arc::new(List {
+                    children: Mutable::new((0..10)
+                        .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
+                        .collect()),
+                    requested_size: Default::default(),
+                    bounding_box: Default::default(),
+                }) as Arc<dyn Widget>
+            } else {
+                Arc::new(Slab::default())
             }
-        }
+        }).collect()),
+        requested_size: Mutable::new(SizeConstraint::Unconstrained),
+        bounding_box: Mutable::new(LayoutBox {
+            pos: UVec2::new(10, 10),
+            size: UVec2::new(200, 500),
+        }),
     });
+
+    let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![list]);
+    let (drawables, fut) = run_widgets(widgets.clone());
+    let (mut out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
+
+    tokio::spawn(drawables_watch_fut);
+    tokio::spawn(fut);
+
+    tokio::spawn(clone!(
+        requested_drawables,
+        clone!(drawables, async move {
+            while let Some(v) = out.next().await {
+                requested_drawables
+                    .lock()
+                    .unwrap()
+                    .insert(drawables.lock_ref().to_vec());
+                elproxy
+                    .send_event(())
+                    .expect("failed to send eventloop message on new drawables");
+            }
+        })
+    ));
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -235,15 +303,11 @@ async fn main() {
                     pass.set_pipeline(&pipeline);
                     pass.set_bind_group(0, &camera_bind_group, &[]);
 
-                    if let Some(incoming_boxes) = requested_boxes.lock().unwrap().take() {
+                    if let Some(incoming_boxes) = requested_drawables.lock().unwrap().take() {
+                        println!("incoming boxes: {:?}", incoming_boxes);
                         quads.clear();
 
-                        quads.append(
-                            &mut incoming_boxes
-                                .into_iter()
-                                .map(|b| Quad::new(&device, b.pos, b.size))
-                                .collect::<Vec<_>>(),
-                        )
+                        quads.append(&mut render_drawables(incoming_boxes, &device))
                     }
 
                     for quad in quads.iter() {
@@ -258,6 +322,23 @@ async fn main() {
             _ => {}
         }
     });
+}
+
+fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Quad> {
+    drawables
+        .into_iter()
+        .flat_map(|drawable| match drawable {
+            Drawable::Quad { pos, size } => {
+                vec![Quad::new(&device, pos, size)]
+            }
+            Drawable::SubTree {
+                children,
+                size,
+                transform,
+            } => render_drawables(children.lock_ref().to_vec(), device),
+            Drawable::ChildList(children) => render_drawables(children, device),
+        })
+        .collect()
 }
 
 pub struct UiAppSettings {
@@ -445,4 +526,3 @@ mod test {
         assert_f32_eq!(pixel_coord_rev.y, pixel_coord.y, "rev px y");
     }
 }
-

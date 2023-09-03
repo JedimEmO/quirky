@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 async-trait.workspace = true
+async-recursion.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
 futures-signals-utils.workspace = true

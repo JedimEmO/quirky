@@ -3,15 +3,14 @@ pub mod view_tree;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-
 use crate::drawables::Drawable;
 use futures::select;
+use futures::stream::FuturesUnordered;
 use futures::Stream;
 use futures::StreamExt;
 use futures::{Future, FutureExt};
-use futures::stream::FuturesUnordered;
 use futures_signals::map_ref;
-use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+use futures_signals::signal::{always, Mutable, ReadOnlyMutable, Signal, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use futures_signals::signal_vec::SignalVecExt;
 
@@ -23,6 +22,7 @@ pub struct CompoundNode {
     pub(crate) children: Mutable<Vec<CompoundNode>>,
 }
 
+#[macro_export]
 macro_rules! clone {
     ($v:ident, $b:expr) => {{
         let $v = $v.clone();
@@ -42,15 +42,24 @@ pub fn run_widgets(
             let futures = FuturesUnordered::new();
 
             for (idx, widget) in v.into_iter().enumerate() {
+                let bb = widget.bounding_box().get();
+                println!("widget bb: {:?}", bb);
                 let subtree_data = MutableVec::new();
+
                 futures.push(widget.run(subtree_data.clone()));
 
                 let mut d = data.lock_mut();
 
+                let drawable = Drawable::SubTree {
+                    children: subtree_data,
+                    transform: bb.pos,
+                    size: bb.size,
+                };
+
                 if idx < d.len() {
-                    d.set_cloned(idx, Drawable::SubTree(subtree_data));
+                    d.set_cloned(idx, drawable);
                 } else {
-                    d.push_cloned(Drawable::SubTree(subtree_data))
+                    d.push_cloned(drawable)
                 }
             }
 
@@ -80,12 +89,12 @@ pub fn run_widgets(
 
 #[cfg(test)]
 mod t {
-    use std::sync::Arc;
-    use std::time::Duration;
-    use futures_signals::signal_vec::MutableVec;
-    use tokio::time::sleep;
     use crate::widgets::List;
     use crate::{run_widgets, Widget};
+    use futures_signals::signal_vec::MutableVec;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_run_widgets() {
@@ -115,7 +124,7 @@ pub enum SizeConstraint {
     Unconstrained,
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Default)]
 pub struct LayoutBox {
     pub pos: UVec2,
     pub size: UVec2,
@@ -127,9 +136,16 @@ pub mod drawables {
 
     #[derive(Clone, Debug)]
     pub enum Drawable {
-        Quad { pos: UVec2, size: UVec2 },
+        Quad {
+            pos: UVec2,
+            size: UVec2,
+        },
         ChildList(Vec<Drawable>),
-        SubTree(MutableVec<Drawable>),
+        SubTree {
+            transform: UVec2,
+            size: UVec2,
+            children: MutableVec<Drawable>,
+        },
     }
 }
 
@@ -137,7 +153,8 @@ pub mod drawables {
 pub trait Widget: Sync + Send + Debug {
     fn paint(&self) -> Vec<Drawable>;
     fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>;
-
+    fn set_bounding_box(&self, new_box: LayoutBox) -> ();
+    fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
     async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>);
 }
 
@@ -159,18 +176,21 @@ pub fn layout(
 
 pub mod widgets {
     use crate::drawables::Drawable;
-    
+
     use crate::{layout, LayoutBox, SizeConstraint, Widget};
     use async_trait::async_trait;
     use futures::select;
     use futures::{FutureExt, StreamExt};
-    use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+    use futures_signals::signal::{always, Mutable, ReadOnlyMutable, Signal, SignalExt};
     use futures_signals::signal_vec::{MutableVec, SignalVecExt};
     use glam::{uvec2, UVec2};
     use std::sync::Arc;
+    use futures::stream::FuturesUnordered;
 
-    #[derive(Debug)]
-    pub struct Slab {}
+    #[derive(Debug, Default)]
+    pub struct Slab {
+        pub bounding_box: Mutable<LayoutBox>,
+    }
 
     #[async_trait]
     impl Widget for Slab {
@@ -185,10 +205,19 @@ pub mod widgets {
             Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
         }
 
-        async fn run(self: Arc<Self>, _drawable_data: MutableVec<Drawable>) {
-            loop {
-                async {}.await;
-            }
+        fn set_bounding_box(&self, new_box: LayoutBox) -> () {
+            self.bounding_box.set(new_box)
+        }
+
+        fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox> {
+            self.bounding_box.read_only()
+        }
+
+        async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>) {
+            self.bounding_box.signal().to_stream().for_each(|bb| {
+                drawable_data.lock_mut().replace_cloned(vec![Drawable::Quad { pos: bb.pos, size: bb.size }]);
+                async move {}
+            }).await;
         }
     }
 
@@ -196,6 +225,7 @@ pub mod widgets {
     pub struct List {
         pub children: Mutable<Vec<Arc<dyn Widget>>>,
         pub requested_size: Mutable<SizeConstraint>,
+        pub bounding_box: Mutable<LayoutBox>,
     }
 
     #[async_trait]
@@ -208,30 +238,62 @@ pub mod widgets {
             Box::new(self.requested_size.signal_cloned())
         }
 
+        fn set_bounding_box(&self, new_box: LayoutBox) -> () {
+            self.bounding_box.set(new_box)
+        }
+
+        fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox> {
+            self.bounding_box.read_only()
+        }
+
         async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>) {
             let child_layouts = layout(
-                self.requested_size.signal_cloned().map(|_s| LayoutBox { pos: UVec2::new(0, 0), size: UVec2::new(100, 500) }),
-                self.children.signal_cloned().map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
+                self.bounding_box().signal(),
+                self.children
+                    .signal_cloned()
+                    .map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
                 |a, b| {
-                    let item_heights = a.size.y / b.len().max(1) as u32;
+                    let total_items = b.len().max(1) as u32;
 
-                    (0..b.len()).map(|i| {
-                        LayoutBox { pos: a.pos + UVec2::new(0, (i * item_heights as usize + i * 5) as u32), size: UVec2::new(100, item_heights) }
-                    }).collect()
+                    let item_heights = (a.size.y - b.len().max(1) as u32 * 5 + 5) / total_items;
+
+                    (0..b.len())
+                        .map(|i| LayoutBox {
+                            pos: a.pos + UVec2::new(0, (i * item_heights as usize + i * 5) as u32),
+                            size: UVec2::new(100, item_heights),
+                        })
+                        .collect()
                 },
             );
 
             let mut child_layouts_stream = child_layouts.to_stream();
+            let mut child_run_futs = FuturesUnordered::new();
 
             loop {
                 let mut next_layouts = child_layouts_stream.next().fuse();
+                let mut next_child_run_fut = child_run_futs.next();
 
                 select! {
                     layouts = next_layouts => {
-                        drawable_data.lock_mut().replace_cloned(layouts.into_iter().map(|v: Vec<LayoutBox>| {
-                            Drawable::ChildList(v.into_iter().map(|v| Drawable::Quad { pos: v.pos, size: v.size }).collect::<Vec<_>>())
-                        }).collect::<Vec<_>>());
+                        if let Some(layouts) = layouts {
+                            child_run_futs = FuturesUnordered::new();
+
+                            let mut new_drawables = vec![];
+
+                            layouts.iter().enumerate().for_each(|(idx, l)| {
+                                let child = self.children.lock_ref()[idx].clone();
+
+                                child.set_bounding_box(*l);
+                                let child_subtree = MutableVec::new();
+                                new_drawables.push(Drawable::SubTree {children: child_subtree.clone(), transform: l.pos, size: l.size });
+                                child_run_futs.push(child.run(child_subtree));
+                            });
+
+                            drawable_data.lock_mut().replace_cloned(new_drawables);
+                        }
                     }
+
+                    _childruns = next_child_run_fut => {}
                 }
             }
         }
@@ -314,11 +376,6 @@ fn my_main() {
 
 #[cfg(test)]
 mod test {
-    
-    
-    
-    
-    
 
     // #[tokio::test]
     // async fn test_list_layout() {
