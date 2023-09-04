@@ -1,26 +1,27 @@
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{FutureExt, select, Sink, SinkExt, Stream, StreamExt};
 use futures_signals::signal::SignalExt;
 use futures_signals::signal::{Mutable, Signal};
 use std::future::Future;
 
 use futures::stream::FuturesUnordered;
-use futures_signals::map_ref;
 use futures_signals::signal_vec::{MutableVec, SignalVecExt};
-use glam::{uvec2, vec3, UVec2, Vec4};
+use glam::{uvec2, UVec2, vec3, Vec4};
 use quirky::drawables::Drawable;
-use quirky::widgets::{List, Slab};
-use quirky::{clone, run_widgets, LayoutBox, SizeConstraint, Widget};
+use quirky::widget::widgets::{List, Slab};
+use quirky::{clone, LayoutBox, run_widgets, SizeConstraint};
 use std::iter;
 use std::sync::{Arc, Mutex};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder,
-    Device, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
+    BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
+    BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder, Device,
+    include_wgsl, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
 };
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
+use quirky::primitives::{Quad, Vertex};
+use quirky::widget::Widget;
 
 #[async_recursion::async_recursion]
 async fn drawable_tree_watch_inner(
@@ -40,6 +41,7 @@ async fn drawable_tree_watch_inner(
                 drawables = next_drawables => {
                     tx.send(()).await.expect("failed to send drawables notification");
                     futures = FuturesUnordered::new();
+
                     if let Some(drawables) = drawables {
                         for drawable in drawables {
                             match drawable {
@@ -98,6 +100,8 @@ async fn main() {
         )
         .await
         .unwrap();
+
+    let device = Box::leak(Box::new(device));
 
     let surface_caps = surface.get_capabilities(&adapter);
     let surface_format = surface_caps
@@ -200,7 +204,7 @@ async fn main() {
 
     let num_quads = Mutable::new(3);
 
-    let mut quads: Vec<Quad> = vec![];
+    let mut quads: Vec<Arc<Quad>> = vec![];
     let requested_drawables = Arc::new(Mutex::<Option<Vec<Drawable>>>::new(None));
     let elproxy = event_loop.create_proxy();
 
@@ -225,112 +229,112 @@ async fn main() {
         }),
     });
 
-    let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![list]);
-    let (drawables, fut) = run_widgets(widgets.clone());
-    let (mut out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
+    {
+        let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![list]);
+        let (drawables, fut) = run_widgets(widgets.clone(),  device);
+        let (mut out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
 
-    tokio::spawn(drawables_watch_fut);
-    tokio::spawn(fut);
+        tokio::spawn(drawables_watch_fut);
+        tokio::spawn(fut);
 
-    tokio::spawn(clone!(
-        requested_drawables,
-        clone!(drawables, async move {
-            while let Some(v) = out.next().await {
-                requested_drawables
-                    .lock()
-                    .unwrap()
-                    .insert(drawables.lock_ref().to_vec());
-                elproxy
-                    .send_event(())
-                    .expect("failed to send eventloop message on new drawables");
-            }
-        })
-    ));
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        match event {
-            Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(new_size) => {
-                    if new_size.height > 0 && new_size.width > 0 {
-                        config.width = new_size.width;
-                        config.height = new_size.height;
-                        let next_count = config.height / 100;
-                        num_quads.set(next_count);
-                        surface.configure(&device, &config);
-                        ui_camera.resize_viewport(UVec2::new(config.width, config.height));
-                        let camera_uniform = ui_camera.create_camera_uniform();
-                        queue.write_buffer(
-                            &camera_buffer,
-                            0,
-                            bytemuck::cast_slice(&[camera_uniform]),
-                        )
-                    }
+        tokio::spawn(clone!(
+            requested_drawables,
+            clone!(drawables, async move {
+                while let Some(v) = out.next().await {
+                    let _ = requested_drawables
+                        .lock()
+                        .unwrap()
+                        .insert(drawables.lock_ref().to_vec());
+                    elproxy
+                        .send_event(())
+                        .expect("failed to send eventloop message on new drawables");
                 }
-                _ => {}
-            },
-            Event::RedrawRequested(_d) => {
-                let output = surface.get_current_texture().unwrap();
-                let view = output
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
+            })
+        ));
 
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("hi there"),
-                });
+        let device = &*device;
+        event_loop.run(move |event, _, control_flow| {
+            *control_flow = ControlFlow::Wait;
 
-                {
-                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: None,
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 1.0,
-                                    g: 0.5,
-                                    b: 0.5,
-                                    a: 1.0,
-                                }),
-                                store: true,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
+            match event {
+                Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(new_size) => {
+                        if new_size.height > 0 && new_size.width > 0 {
+                            config.width = new_size.width;
+                            config.height = new_size.height;
+                            let next_count = config.height / 100;
+                            num_quads.set(next_count);
+                            surface.configure(&device, &config);
+                            ui_camera.resize_viewport(UVec2::new(config.width, config.height));
+                            let camera_uniform = ui_camera.create_camera_uniform();
+                            queue.write_buffer(
+                                &camera_buffer,
+                                0,
+                                bytemuck::cast_slice(&[camera_uniform]),
+                            )
+                        }
+                    }
+                    _ => {}
+                },
+                Event::RedrawRequested(_d) => {
+                    let output = surface.get_current_texture().unwrap();
+                    let view = output
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+
+                    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("hi there"),
                     });
 
-                    pass.set_pipeline(&pipeline);
-                    pass.set_bind_group(0, &camera_bind_group, &[]);
+                    {
+                        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: None,
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                                        r: 1.0,
+                                        g: 0.5,
+                                        b: 0.5,
+                                        a: 1.0,
+                                    }),
+                                    store: true,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                        });
 
-                    if let Some(incoming_boxes) = requested_drawables.lock().unwrap().take() {
-                        println!("incoming boxes: {:?}", incoming_boxes);
-                        quads.clear();
+                        pass.set_pipeline(&pipeline);
+                        pass.set_bind_group(0, &camera_bind_group, &[]);
 
-                        quads.append(&mut render_drawables(incoming_boxes, &device))
+                        if let Some(incoming_boxes) = requested_drawables.lock().unwrap().take() {
+                            quads.clear();
+
+                            quads.append(&mut render_drawables(incoming_boxes, &device))
+                        }
+
+                        for quad in quads.iter() {
+                            quad.draw(&mut pass);
+                        }
                     }
 
-                    for quad in quads.iter() {
-                        quad.draw(&mut pass);
-                    }
+                    queue.submit(iter::once(encoder.finish()));
+
+                    output.present();
                 }
-
-                queue.submit(iter::once(encoder.finish()));
-
-                output.present();
+                _ => {}
             }
-            _ => {}
-        }
-    });
+        });
+    }
 }
 
-fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Quad> {
+fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Arc<Quad>> {
     drawables
         .into_iter()
         .flat_map(|drawable| match drawable {
-            Drawable::Quad { pos, size } => {
-                vec![Quad::new(&device, pos, size)]
-            }
+            Drawable::Quad(q) => vec![q],
             Drawable::SubTree {
                 children,
                 size,
@@ -371,78 +375,6 @@ pub fn clear_render_pass<'a>(
         })],
         depth_stencil_attachment: None,
     })
-}
-
-fn draw_quads(_quads: &[Quad], _render_pass: &mut RenderPass, _device: &Device) {}
-
-#[derive(bytemuck::Zeroable, bytemuck::Pod, Copy, Clone)]
-#[repr(C)]
-struct Vertex {
-    pos: [f32; 2],
-}
-
-impl Vertex {
-    fn buffer_layout<'a>() -> wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[wgpu::VertexAttribute {
-                shader_location: 0,
-                format: wgpu::VertexFormat::Float32x2,
-                offset: 0,
-            }],
-        }
-    }
-}
-
-struct Quad {
-    pub vertices: wgpu::Buffer,
-    pub indexes: wgpu::Buffer,
-}
-
-const INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
-
-impl Quad {
-    pub fn new(device: &wgpu::Device, pos: UVec2, size: UVec2) -> Self {
-        let left_x = pos.x as f32;
-        let right_x = (pos.x + size.x) as f32;
-        let top_y = pos.y as f32;
-        let bottom_y = (pos.y + size.y) as f32;
-
-        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("quad buffer"),
-            contents: bytemuck::cast_slice(&[
-                Vertex {
-                    pos: [left_x, top_y],
-                },
-                Vertex {
-                    pos: [right_x, top_y],
-                },
-                Vertex {
-                    pos: [right_x, bottom_y],
-                },
-                Vertex {
-                    pos: [left_x, bottom_y],
-                },
-            ]),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let indexes = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("quad index buffer"),
-            contents: bytemuck::cast_slice(&INDEXES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        Self { vertices, indexes }
-    }
-
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        // pass.set_scissor_rect(20, 20, 100, 20);
-        pass.set_index_buffer(self.indexes.slice(..), wgpu::IndexFormat::Uint16);
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.draw_indexed(0..6, 0, 0..1);
-    }
 }
 
 #[derive(bytemuck::Zeroable, bytemuck::Pod, Copy, Clone)]
@@ -493,7 +425,7 @@ mod test {
     use quirky::assert_f32_eq;
 
     use crate::UiCamera2D;
-    use glam::{vec4, UVec2, Vec4};
+    use glam::{UVec2, vec4, Vec4};
 
     #[test]
     fn test_camera_transform() {
