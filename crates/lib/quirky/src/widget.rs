@@ -9,7 +9,7 @@ use wgpu::Device;
 #[async_trait::async_trait]
 pub trait Widget: Sync + Send + Debug {
     fn paint(&self, device: &Device) -> Vec<Drawable>;
-    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>;
+    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>;
     fn set_bounding_box(&self, new_box: LayoutBox) -> ();
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
     async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device);
@@ -39,10 +39,21 @@ pub mod widgets {
     #[async_trait]
     impl Widget for Slab {
         fn paint(&self, device: &Device) -> Vec<Drawable> {
-            vec![]
+            let bb = self.bounding_box.get();
+
+            vec![
+                Drawable::Quad(Arc::new(Quads::new(
+                    vec![Quad::new(bb.pos, bb.size, [0.2, 0.2, 0.2, 1.0])],
+                    device,
+                ))),
+                Drawable::Quad(Arc::new(Quads::new(
+                    vec![Quad::new(bb.pos + UVec2::new(2, 2), bb.size - UVec2::new(4, 4), [0.3, 0.3, 0.3, 1.0])],
+                    device,
+                )))
+            ]
         }
 
-        fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
+        fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
             Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
         }
 
@@ -61,10 +72,7 @@ pub mod widgets {
                 .for_each(|bb| {
                     drawable_data
                         .lock_mut()
-                        .replace_cloned(vec![Drawable::Quad(Arc::new(Quads::new(
-                            vec![Quad::new(bb.pos, bb.size, [0.3, 0.3, 0.8, 1.0])],
-                            device,
-                        )))]);
+                        .replace_cloned(self.paint(device));
                     async move {}
                 })
                 .await;
@@ -93,7 +101,7 @@ pub mod widgets {
             }
         }
 
-        fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
+        fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
             Box::new(self.requested_size.signal_cloned())
         }
 

@@ -36,8 +36,6 @@ async fn drawable_tree_watch_inner(
         let mut next_drawables = drawables_stream.next().fuse();
         let mut next_unordered = futures.next().fuse();
 
-        println!("waiting for drawables");
-
         select! {
                 drawables = next_drawables => {
                     tx.send(()).await.expect("failed to send drawables notification");
@@ -123,6 +121,7 @@ async fn main() {
     };
 
     surface.configure(&device, &config);
+
     let _pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
         bind_group_layouts: &[],
@@ -307,10 +306,10 @@ async fn main() {
                                 resolve_target: None,
                                 ops: wgpu::Operations {
                                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                                        r: 1.0,
-                                        g: 0.5,
-                                        b: 0.5,
-                                        a: 1.0,
+                                        r: 0.05,
+                                        g: 0.05,
+                                        b: 0.05,
+                                        a: 0.5,
                                     }),
                                     store: true,
                                 },

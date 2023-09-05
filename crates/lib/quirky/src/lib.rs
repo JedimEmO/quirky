@@ -1,6 +1,7 @@
 pub mod view_tree;
 pub mod widget;
 pub mod primitives;
+pub mod widgets;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -96,18 +97,33 @@ mod t {
     use crate::widget::widgets::List;
     use crate::run_widgets;
     use futures_signals::signal_vec::MutableVec;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;
+    use wgpu::{DownlevelCapabilities, Features, Limits};
+    use wgpu_test::{initialize_test, TestParameters};
     use crate::widget::Widget;
 
     #[tokio::test]
     async fn test_run_widgets() {
+        let device = Arc::new(Mutex::new(None));
+
+        clone!(device, initialize_test(TestParameters {
+            failures: vec![],
+            required_downlevel_properties: DownlevelCapabilities::default(),
+            required_limits: Limits::default(),
+            required_features: Features::default()
+        },|ctx| {
+          device.lock().unwrap().insert(Some(ctx));
+        }));
+
+        let ctx = Box::leak(Box::new(device.lock().unwrap().take().unwrap().take().unwrap()));
+
         let widget: Arc<dyn Widget> = Arc::new(List::default());
         let widget2: Arc<dyn Widget> = Arc::new(List::default());
 
         let widgets = MutableVec::new_with_values(vec![widget.clone()]);
-        let (drawables, fut) = run_widgets(widgets.clone());
+        let (drawables, fut) = run_widgets(widgets.clone(), &ctx.device);
 
         let _j = tokio::spawn(fut);
 
@@ -118,7 +134,7 @@ mod t {
 
         sleep(Duration::from_millis(100)).await;
 
-        assert_eq!(drawables.lock_ref().len(), 2);
+        assert_eq!(drawables.lock_ref().len(), 1);
     }
 }
 
