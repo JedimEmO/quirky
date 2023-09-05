@@ -139,11 +139,11 @@ pub mod drawables {
     use std::sync::Arc;
     use futures_signals::signal_vec::MutableVec;
     use glam::UVec2;
-    use crate::primitives::Quad;
+    use crate::primitives::{Quad, Quads};
 
     #[derive(Clone)]
     pub enum Drawable {
-        Quad(Arc<Quad>),
+        Quad(Arc<Quads>),
         ChildList(Vec<Drawable>),
         SubTree {
             transform: UVec2,

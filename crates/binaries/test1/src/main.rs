@@ -17,10 +17,11 @@ use wgpu::{
     BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder, Device,
     include_wgsl, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
 };
+
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-use quirky::primitives::{Quad, Vertex};
+use quirky::primitives::{Quad, Quads, Vertex};
 use quirky::widget::Widget;
 
 #[async_recursion::async_recursion]
@@ -176,7 +177,7 @@ async fn main() {
         vertex: VertexState {
             module: &shader,
             entry_point: "vs_main",
-            buffers: &[Vertex::buffer_layout()],
+            buffers: &[Vertex::LAYOUT, Quad::layout()],
         },
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -204,7 +205,7 @@ async fn main() {
 
     let num_quads = Mutable::new(3);
 
-    let mut quads: Vec<Arc<Quad>> = vec![];
+    let mut quads: Vec<Arc<Quads>> = vec![];
     let requested_drawables = Arc::new(Mutex::<Option<Vec<Drawable>>>::new(None));
     let elproxy = event_loop.create_proxy();
 
@@ -330,7 +331,7 @@ async fn main() {
     }
 }
 
-fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Arc<Quad>> {
+fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Arc<Quads>> {
     drawables
         .into_iter()
         .flat_map(|drawable| match drawable {

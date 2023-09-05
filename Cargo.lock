@@ -1225,6 +1225,7 @@ dependencies = [
  "glam",
  "tokio",
  "wgpu",
+ "wgpu_macros",
 ]
 
 [[package]]
@@ -1840,6 +1841,17 @@ dependencies = [
  "bitflags 2.4.0",
  "js-sys",
  "web-sys",
+]
+
+[[package]]
+name = "wgpu_macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baab30e37e95eba87404c8b3142f244ed30854ec89b2d5dedba327192dcd2858"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]

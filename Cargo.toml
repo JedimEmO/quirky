@@ -9,6 +9,7 @@ glam = "0.24.1"
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "time"] }
 winit = "0.28.6"
 wgpu = "0.17.0"
+wgpu_macros = "0.1.0"
 
 [workspace]
 members = [

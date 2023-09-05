@@ -28,7 +28,7 @@ pub mod widgets {
     use std::sync::Arc;
     use futures::stream::FuturesUnordered;
     use wgpu::Device;
-    use crate::primitives::Quad;
+    use crate::primitives::{Quad, Quads};
     use crate::widget::Widget;
 
     #[derive(Debug, Default)]
@@ -56,7 +56,7 @@ pub mod widgets {
 
         async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device) {
             self.bounding_box.signal().to_stream().for_each(|bb| {
-                drawable_data.lock_mut().replace_cloned(vec![Drawable::Quad(Arc::new(Quad::new(device, bb.pos, bb.size)))]);
+                drawable_data.lock_mut().replace_cloned(vec![Drawable::Quad(Arc::new(Quads::new(vec![Quad::new( bb.pos, bb.size, [0.3, 0.3, 0.5, 1.0])], device)))]);
                 async move {}
             }).await;
         }
