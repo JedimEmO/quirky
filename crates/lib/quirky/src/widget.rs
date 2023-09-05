@@ -1,15 +1,15 @@
-use std::fmt::Debug;
-use futures_signals::signal::{ReadOnlyMutable, Signal};
-use std::sync::Arc;
-use futures_signals::signal_vec::MutableVec;
-use wgpu::Device;
 use crate::drawables::Drawable;
 use crate::{LayoutBox, SizeConstraint};
+use futures_signals::signal::{ReadOnlyMutable, Signal};
+use futures_signals::signal_vec::MutableVec;
+use std::fmt::Debug;
+use std::sync::Arc;
+use wgpu::Device;
 
 #[async_trait::async_trait]
 pub trait Widget: Sync + Send + Debug {
     fn paint(&self, device: &Device) -> Vec<Drawable>;
-    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>;
+    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>;
     fn set_bounding_box(&self, new_box: LayoutBox) -> ();
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
     async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device);
@@ -18,18 +18,18 @@ pub trait Widget: Sync + Send + Debug {
 pub mod widgets {
     use crate::drawables::Drawable;
 
+    use crate::primitives::{Quad, Quads};
+    use crate::widget::Widget;
     use crate::{layout, LayoutBox, SizeConstraint};
     use async_trait::async_trait;
     use futures::select;
+    use futures::stream::FuturesUnordered;
     use futures::{FutureExt, StreamExt};
     use futures_signals::signal::{always, Mutable, ReadOnlyMutable, Signal, SignalExt};
-    use futures_signals::signal_vec::{MutableVec, SignalVecExt};
+    use futures_signals::signal_vec::MutableVec;
     use glam::{uvec2, UVec2};
     use std::sync::Arc;
-    use futures::stream::FuturesUnordered;
     use wgpu::Device;
-    use crate::primitives::{Quad, Quads};
-    use crate::widget::Widget;
 
     #[derive(Debug, Default)]
     pub struct Slab {
@@ -42,7 +42,7 @@ pub mod widgets {
             vec![]
         }
 
-        fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
+        fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
             Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
         }
 
@@ -55,10 +55,19 @@ pub mod widgets {
         }
 
         async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device) {
-            self.bounding_box.signal().to_stream().for_each(|bb| {
-                drawable_data.lock_mut().replace_cloned(vec![Drawable::Quad(Arc::new(Quads::new(vec![Quad::new( bb.pos, bb.size, [0.3, 0.3, 0.5, 1.0])], device)))]);
-                async move {}
-            }).await;
+            self.bounding_box
+                .signal()
+                .to_stream()
+                .for_each(|bb| {
+                    drawable_data
+                        .lock_mut()
+                        .replace_cloned(vec![Drawable::Quad(Arc::new(Quads::new(
+                            vec![Quad::new(bb.pos, bb.size, [0.3, 0.3, 0.8, 1.0])],
+                            device,
+                        )))]);
+                    async move {}
+                })
+                .await;
         }
     }
 
@@ -67,15 +76,24 @@ pub mod widgets {
         pub children: Mutable<Vec<Arc<dyn Widget>>>,
         pub requested_size: Mutable<SizeConstraint>,
         pub bounding_box: Mutable<LayoutBox>,
+        pub background: Option<[f32; 4]>,
     }
 
     #[async_trait]
     impl Widget for List {
         fn paint(&self, device: &Device) -> Vec<Drawable> {
-            vec![]
+            if let Some(background) = self.background {
+                let bb = self.bounding_box().get();
+                vec![Drawable::Quad(Arc::new(Quads::new(
+                    vec![Quad::new(bb.pos, bb.size, background)],
+                    device,
+                )))]
+            } else {
+                vec![]
+            }
         }
 
-        fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
+        fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
             Box::new(self.requested_size.signal_cloned())
         }
 
@@ -119,7 +137,7 @@ pub mod widgets {
                         if let Some(layouts) = layouts {
                             child_run_futs = FuturesUnordered::new();
 
-                            let mut new_drawables = vec![];
+                            let mut new_drawables = self.paint(device);
 
                             layouts.iter().enumerate().for_each(|(idx, l)| {
                                 let child = self.children.lock_ref()[idx].clone();

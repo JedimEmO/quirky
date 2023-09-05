@@ -1,28 +1,28 @@
-use futures::{FutureExt, select, Sink, SinkExt, Stream, StreamExt};
+use futures::stream::FuturesUnordered;
+use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use futures_signals::signal::SignalExt;
 use futures_signals::signal::{Mutable, Signal};
 use std::future::Future;
 
-use futures::stream::FuturesUnordered;
 use futures_signals::signal_vec::{MutableVec, SignalVecExt};
-use glam::{uvec2, UVec2, vec3, Vec4};
+use glam::{uvec2, vec3, UVec2, Vec4};
 use quirky::drawables::Drawable;
 use quirky::widget::widgets::{List, Slab};
-use quirky::{clone, LayoutBox, run_widgets, SizeConstraint};
+use quirky::{clone, run_widgets, LayoutBox, SizeConstraint};
 use std::iter;
 use std::sync::{Arc, Mutex};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder, Device,
-    include_wgsl, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
+    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BufferBindingType, BufferUsages, Color, CommandEncoder,
+    Device, PipelineLayoutDescriptor, RenderPass, ShaderStages, Texture, TextureView, VertexState,
 };
 
+use quirky::primitives::{Quad, Quads, Vertex};
+use quirky::widget::Widget;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-use quirky::primitives::{Quad, Quads, Vertex};
-use quirky::widget::Widget;
 
 #[async_recursion::async_recursion]
 async fn drawable_tree_watch_inner(
@@ -61,7 +61,7 @@ async fn drawable_tree_watch_inner(
 pub fn drawable_tree_watch(
     widgets: MutableVec<Drawable>,
 ) -> (impl Stream<Item = ()>, impl Future<Output = ()>) {
-    let (mut tx, rx) = futures::channel::mpsc::channel(100);
+    let (tx, rx) = futures::channel::mpsc::channel(100);
 
     let fut = drawable_tree_watch_inner(widgets, tx);
 
@@ -210,29 +210,37 @@ async fn main() {
     let elproxy = event_loop.create_proxy();
 
     let list = Arc::new(List {
-        children: Mutable::new((0..5).map(|i| {
-            if i % 2 == 0 {
-                Arc::new(List {
-                    children: Mutable::new((0..10)
-                        .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
-                        .collect()),
-                    requested_size: Default::default(),
-                    bounding_box: Default::default(),
-                }) as Arc<dyn Widget>
-            } else {
-                Arc::new(Slab::default())
-            }
-        }).collect()),
+        children: Mutable::new(
+            (0..3)
+                .map(|i| {
+                    if i % 2 == 0 {
+                        Arc::new(List {
+                            children: Mutable::new(
+                                (0..6)
+                                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
+                                    .collect(),
+                            ),
+                            requested_size: Default::default(),
+                            bounding_box: Default::default(),
+                            background: Some([0.4, 0.4, 0.4, 1.0]),
+                        }) as Arc<dyn Widget>
+                    } else {
+                        Arc::new(Slab::default())
+                    }
+                })
+                .collect(),
+        ),
         requested_size: Mutable::new(SizeConstraint::Unconstrained),
         bounding_box: Mutable::new(LayoutBox {
             pos: UVec2::new(10, 10),
             size: UVec2::new(200, 500),
         }),
+        ..Default::default()
     });
 
     {
         let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![list]);
-        let (drawables, fut) = run_widgets(widgets.clone(),  device);
+        let (drawables, fut) = run_widgets(widgets.clone(), device);
         let (mut out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
 
         tokio::spawn(drawables_watch_fut);
@@ -258,35 +266,38 @@ async fn main() {
             *control_flow = ControlFlow::Wait;
 
             match event {
-                Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::Resized(new_size) => {
-                        if new_size.height > 0 && new_size.width > 0 {
-                            config.width = new_size.width;
-                            config.height = new_size.height;
-                            let next_count = config.height / 100;
-                            num_quads.set(next_count);
-                            surface.configure(&device, &config);
-                            ui_camera.resize_viewport(UVec2::new(config.width, config.height));
-                            let camera_uniform = ui_camera.create_camera_uniform();
-                            queue.write_buffer(
-                                &camera_buffer,
-                                0,
-                                bytemuck::cast_slice(&[camera_uniform]),
-                            )
+                Event::WindowEvent { event, window_id } if window_id == window.id() => {
+                    match event {
+                        WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                        WindowEvent::Resized(new_size) => {
+                            if new_size.height > 0 && new_size.width > 0 {
+                                config.width = new_size.width;
+                                config.height = new_size.height;
+                                let next_count = config.height / 100;
+                                num_quads.set(next_count);
+                                surface.configure(&device, &config);
+                                ui_camera.resize_viewport(UVec2::new(config.width, config.height));
+                                let camera_uniform = ui_camera.create_camera_uniform();
+                                queue.write_buffer(
+                                    &camera_buffer,
+                                    0,
+                                    bytemuck::cast_slice(&[camera_uniform]),
+                                )
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
-                },
+                }
                 Event::RedrawRequested(_d) => {
                     let output = surface.get_current_texture().unwrap();
                     let view = output
                         .texture
                         .create_view(&wgpu::TextureViewDescriptor::default());
 
-                    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("hi there"),
-                    });
+                    let mut encoder =
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("hi there"),
+                        });
 
                     {
                         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -426,7 +437,7 @@ mod test {
     use quirky::assert_f32_eq;
 
     use crate::UiCamera2D;
-    use glam::{UVec2, vec4, Vec4};
+    use glam::{vec4, UVec2, Vec4};
 
     #[test]
     fn test_camera_transform() {

@@ -1,7 +1,7 @@
-use std::mem;
 use glam::{quat, UVec2, Vec2};
-use wgpu::Device;
+use std::mem;
 use wgpu::util::DeviceExt;
+use wgpu::Device;
 use wgpu_macros::VertexLayout;
 
 const INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
@@ -19,7 +19,6 @@ const VERTICES: [Vertex; 4] = [
     Vertex { pos: [0.0, 1.0] },
 ];
 
-
 #[repr(C)]
 #[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
 #[layout(Instance)]
@@ -31,7 +30,11 @@ pub struct Quad {
 
 impl Quad {
     pub fn new(pos: UVec2, size: UVec2, color: [f32; 4]) -> Self {
-        Self { color, pos: pos.as_vec2().to_array(), size: size.as_vec2().to_array() }
+        Self {
+            color,
+            pos: pos.as_vec2().to_array(),
+            size: size.as_vec2().to_array(),
+        }
     }
 
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {
@@ -42,18 +45,18 @@ impl Quad {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x2
+                    format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x2
+                    format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                     shader_location: 4,
-                    format: wgpu::VertexFormat::Float32x4
-                }
+                    format: wgpu::VertexFormat::Float32x4,
+                },
             ],
         }
     }
@@ -63,7 +66,7 @@ pub struct Quads {
     num_instances: u32,
     index_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
-    vertex_buffer: wgpu::Buffer
+    vertex_buffer: wgpu::Buffer,
 }
 
 impl Quads {
@@ -90,10 +93,9 @@ impl Quads {
             num_instances: geometry.len() as u32,
             instance_buffer,
             index_buffer,
-            vertex_buffer
+            vertex_buffer,
         }
     }
-
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -102,4 +104,3 @@ impl Quads {
         pass.draw_indexed(0..6, 0, 0..self.num_instances);
     }
 }
-
