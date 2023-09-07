@@ -5,9 +5,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-macros = ["quirky-macros"]
-
 [dependencies]
 async-trait.workspace = true
 async-recursion.workspace = true
@@ -19,9 +16,8 @@ glam.workspace = true
 wgpu.workspace = true
 wgpu_macros.workspace = true
 
-quirky-macros = { path = "../quirky-macros", optional = true }
+typed-builder = "0.15.1"
 
 [dev-dependencies]
 tokio.workspace = true
-quirky-macros = { path = "../quirky-macros" }
 wgpu-test = { git = "https://github.com/gfx-rs/wgpu.git", tag = "v0.17.0" }

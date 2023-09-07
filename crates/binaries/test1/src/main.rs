@@ -1,7 +1,7 @@
 use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
-use futures_signals::signal::SignalExt;
-use futures_signals::signal::{Mutable, Signal};
+use futures::{select, FutureExt, SinkExt, Stream, StreamExt};
+use futures_signals::signal::Mutable;
+use futures_signals::signal::{always, SignalExt};
 use std::future::Future;
 
 use futures_signals::signal_vec::{MutableVec, SignalVecExt};
@@ -10,7 +10,10 @@ use quirky::drawables::Drawable;
 use quirky::widget::widgets::{List, Slab};
 use quirky::{clone, run_widgets, LayoutBox, SizeConstraint};
 use std::iter;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::time::sleep;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     include_wgsl, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -20,7 +23,8 @@ use wgpu::{
 
 use quirky::primitives::{Quad, Quads, Vertex};
 use quirky::widget::Widget;
-use winit::event::{Event, WindowEvent};
+use quirky::widgets::box_layout::{BoxLayout, ChildDirection};
+use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
@@ -29,40 +33,49 @@ async fn drawable_tree_watch_inner(
     drawables: MutableVec<Drawable>,
     mut tx: futures::channel::mpsc::Sender<()>,
 ) {
-    let mut drawables_stream = drawables.signal_vec_cloned().to_signal_cloned().to_stream();
+    let mut drawables_stream = drawables
+        .signal_vec_cloned()
+        .to_signal_cloned()
+        .to_stream()
+        .fuse();
     let mut futures = FuturesUnordered::new();
 
     loop {
-        let mut next_drawables = drawables_stream.next().fuse();
-        let mut next_unordered = futures.next().fuse();
+        let mut next_drawables = drawables_stream.select_next_some();
+        let mut next_unordered = futures.select_next_some();
 
         select! {
                 drawables = next_drawables => {
                     tx.send(()).await.expect("failed to send drawables notification");
                     futures = FuturesUnordered::new();
 
-                    if let Some(drawables) = drawables {
-                        for drawable in drawables {
-                            match drawable {
-                                Drawable::SubTree{children, ..} => {
-                                    futures.push(drawable_tree_watch_inner(children.clone(), tx.clone()));
-                                }
-                                _ => {}
+                   for drawable in drawables {
+                        match drawable {
+                            Drawable::SubTree{children, ..} => {
+                                futures.push(drawable_tree_watch_inner(children.clone(), tx.clone()));
                             }
+                            _ => {}
                         }
                     }
-            }
+                }
+                _ = next_unordered => {}
         }
     }
 }
 
 pub fn drawable_tree_watch(
     widgets: MutableVec<Drawable>,
-) -> (impl Stream<Item = ()>, impl Future<Output = ()>) {
+) -> (Pin<Box<impl Stream<Item = ()>>>, impl Future<Output = ()>) {
     let (tx, rx) = futures::channel::mpsc::channel(100);
 
     let fut = drawable_tree_watch_inner(widgets, tx);
 
+    let rx = Box::pin(
+        futures_signals::signal::from_stream(rx)
+            .throttle(|| sleep(Duration::from_millis(50)))
+            .map(|_| ())
+            .to_stream(),
+    );
     (rx, fut)
 }
 
@@ -120,7 +133,7 @@ async fn main() {
         view_formats: vec![],
     };
 
-    surface.configure(&device, &config);
+    surface.configure(device, &config);
 
     let _pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -208,39 +221,47 @@ async fn main() {
     let requested_drawables = Arc::new(Mutex::<Option<Vec<Drawable>>>::new(None));
     let elproxy = event_loop.create_proxy();
 
-    let list = Arc::new(List {
-        children: Mutable::new(
-            (0..3)
-                .map(|i| {
-                    if i % 2 == 0 {
-                        Arc::new(List {
-                            children: Mutable::new(
-                                (0..6)
-                                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
-                                    .collect(),
-                            ),
-                            requested_size: Default::default(),
-                            bounding_box: Default::default(),
-                            background: Some([0.4, 0.4, 0.4, 1.0]),
-                        }) as Arc<dyn Widget>
-                    } else {
-                        Arc::new(Slab::default())
-                    }
-                })
-                .collect(),
-        ),
-        requested_size: Mutable::new(SizeConstraint::Unconstrained),
-        bounding_box: Mutable::new(LayoutBox {
-            pos: UVec2::new(10, 10),
-            size: UVec2::new(200, 500),
+    let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
+        Arc::new(List {
+            children: Mutable::new(
+                (0..6)
+                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
+                    .collect(),
+            ),
+            requested_size: Mutable::new(SizeConstraint::MinSize(UVec2::new(300, 200))),
+            bounding_box: Default::default(),
+            background: Some([1.0, 0.4, 0.4, 1.0]),
         }),
-        ..Default::default()
+        Arc::new(List {
+            children: Mutable::new(
+                (0..6)
+                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
+                    .collect(),
+            ),
+            requested_size: Mutable::new(SizeConstraint::Unconstrained),
+            bounding_box: Default::default(),
+            background: Some([0.4, 1.0, 0.4, 1.0]),
+        }),
+    ]);
+
+    let bb = Mutable::new(LayoutBox {
+        pos: UVec2::new(0, 0),
+        size: UVec2::new(600, 400),
     });
 
+    let boxed_layout = Arc::new(
+        BoxLayout::builder()
+            .children(clone!(children, move || children.signal_cloned()))
+            .child_direction(|| always(ChildDirection::Horizontal))
+            .size_constraint(|| always(SizeConstraint::Unconstrained))
+            .bounding_box(bb.clone())
+            .build(),
+    );
+
     {
-        let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![list]);
+        let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![boxed_layout]);
         let (drawables, fut) = run_widgets(widgets.clone(), device);
-        let (mut out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
+        let (out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
 
         tokio::spawn(drawables_watch_fut);
         tokio::spawn(fut);
@@ -248,11 +269,16 @@ async fn main() {
         tokio::spawn(clone!(
             requested_drawables,
             clone!(drawables, async move {
-                while let Some(v) = out.next().await {
+                let mut out = out.fuse();
+
+                loop {
+                    let _v = out.next().await;
+
                     let _ = requested_drawables
                         .lock()
                         .unwrap()
                         .insert(drawables.lock_ref().to_vec());
+
                     elproxy
                         .send_event(())
                         .expect("failed to send eventloop message on new drawables");
@@ -265,6 +291,9 @@ async fn main() {
             *control_flow = ControlFlow::Wait;
 
             match event {
+                Event::UserEvent(()) => {
+                    window.request_redraw();
+                }
                 Event::WindowEvent { event, window_id } if window_id == window.id() => {
                     match event {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -272,9 +301,13 @@ async fn main() {
                             if new_size.height > 0 && new_size.width > 0 {
                                 config.width = new_size.width;
                                 config.height = new_size.height;
+                                bb.set(LayoutBox {
+                                    pos: Default::default(),
+                                    size: UVec2::new(config.width, config.height),
+                                });
                                 let next_count = config.height / 100;
                                 num_quads.set(next_count);
-                                surface.configure(&device, &config);
+                                surface.configure(device, &config);
                                 ui_camera.resize_viewport(UVec2::new(config.width, config.height));
                                 let camera_uniform = ui_camera.create_camera_uniform();
                                 queue.write_buffer(
@@ -284,9 +317,31 @@ async fn main() {
                                 )
                             }
                         }
+                        WindowEvent::KeyboardInput { input, .. } => {
+                            if input.state == ElementState::Pressed {
+                                match input.scancode {
+                                    30 => children.lock_mut().push(Arc::new(Slab::default())), // s
+                                    48 => children.lock_mut().push(Arc::new(List {
+                                        children: Mutable::new(
+                                            (0..6)
+                                                .map(|_| {
+                                                    Arc::new(Slab::default()) as Arc<dyn Widget>
+                                                })
+                                                .collect(),
+                                        ),
+                                        requested_size: Default::default(),
+                                        bounding_box: Default::default(),
+                                        background: Some([0.4, 0.4, 0.4, 1.0]),
+                                    })
+                                        as Arc<dyn Widget>), // b
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
+
                 Event::RedrawRequested(_d) => {
                     let output = surface.get_current_texture().unwrap();
                     let view = output
@@ -323,7 +378,7 @@ async fn main() {
                         if let Some(incoming_boxes) = requested_drawables.lock().unwrap().take() {
                             quads.clear();
 
-                            quads.append(&mut render_drawables(incoming_boxes, &device))
+                            quads.append(&mut render_drawables(incoming_boxes, device))
                         }
 
                         for quad in quads.iter() {
@@ -348,8 +403,8 @@ fn render_drawables(drawables: Vec<Drawable>, device: &Device) -> Vec<Arc<Quads>
             Drawable::Quad(q) => vec![q],
             Drawable::SubTree {
                 children,
-                size,
-                transform,
+                size: _,
+                transform: _,
             } => render_drawables(children.lock_ref().to_vec(), device),
             Drawable::ChildList(children) => render_drawables(children, device),
         })

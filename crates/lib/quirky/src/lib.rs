@@ -1,6 +1,6 @@
+pub mod primitives;
 pub mod view_tree;
 pub mod widget;
-pub mod primitives;
 pub mod widgets;
 
 use std::fmt::Debug;
@@ -35,10 +35,10 @@ macro_rules! clone {
     }};
 }
 
-pub fn run_widgets<'a>(
+pub fn run_widgets(
     widgets: MutableVec<Arc<dyn Widget>>,
-    device: &'a Device
-) -> (MutableVec<Drawable>, impl Future<Output=()> + 'a) {
+    device: &Device,
+) -> (MutableVec<Drawable>, impl Future<Output = ()> + '_) {
     let data = MutableVec::new();
 
     let runner_fut = clone!(data, async move {
@@ -94,30 +94,38 @@ pub fn run_widgets<'a>(
 
 #[cfg(test)]
 mod t {
-    use crate::widget::widgets::List;
     use crate::run_widgets;
+    use crate::widget::widgets::List;
+    use crate::widget::Widget;
     use futures_signals::signal_vec::MutableVec;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;
     use wgpu::{DownlevelCapabilities, Features, Limits};
     use wgpu_test::{initialize_test, TestParameters};
-    use crate::widget::Widget;
 
     #[tokio::test]
     async fn test_run_widgets() {
         let device = Arc::new(Mutex::new(None));
 
-        clone!(device, initialize_test(TestParameters {
-            failures: vec![],
-            required_downlevel_properties: DownlevelCapabilities::default(),
-            required_limits: Limits::default(),
-            required_features: Features::default()
-        },|ctx| {
-          device.lock().unwrap().insert(Some(ctx));
-        }));
+        clone!(
+            device,
+            initialize_test(
+                TestParameters {
+                    failures: vec![],
+                    required_downlevel_properties: DownlevelCapabilities::default(),
+                    required_limits: Limits::default(),
+                    required_features: Features::default()
+                },
+                |ctx| {
+                    device.lock().unwrap().insert(Some(ctx));
+                }
+            )
+        );
 
-        let ctx = Box::leak(Box::new(device.lock().unwrap().take().unwrap().take().unwrap()));
+        let ctx = Box::leak(Box::new(
+            device.lock().unwrap().take().unwrap().take().unwrap(),
+        ));
 
         let widget: Arc<dyn Widget> = Arc::new(List::default());
         let widget2: Arc<dyn Widget> = Arc::new(List::default());
@@ -152,10 +160,10 @@ pub struct LayoutBox {
 }
 
 pub mod drawables {
-    use std::sync::Arc;
+    use crate::primitives::Quads;
     use futures_signals::signal_vec::MutableVec;
     use glam::UVec2;
-    use crate::primitives::{Quad, Quads};
+    use std::sync::Arc;
 
     #[derive(Clone)]
     pub enum Drawable {
@@ -170,10 +178,10 @@ pub mod drawables {
 }
 
 pub fn layout(
-    container_box: impl Signal<Item=LayoutBox> + Send,
-    constraints: impl Signal<Item=Vec<Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>>> + Send,
+    container_box: impl Signal<Item = LayoutBox> + Send,
+    constraints: impl Signal<Item = Vec<Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>>> + Send,
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>) -> Vec<LayoutBox> + Send,
-) -> impl Signal<Item=Vec<LayoutBox>> + Send {
+) -> impl Signal<Item = Vec<LayoutBox>> + Send {
     let constraints = constraints.to_signal_vec();
     let constraints = constraints.map_signal(|x| x).to_signal_cloned();
 
@@ -197,10 +205,10 @@ pub enum VerticalLayoutStrategy {
 }
 
 fn lay_out_boxes_vertically(
-    container_box: impl Signal<Item=LayoutBox>,
-    strategy: impl Signal<Item=VerticalLayoutStrategy>,
-    requested_item_count: impl Signal<Item=usize>,
-) -> impl Signal<Item=Vec<LayoutBox>> {
+    container_box: impl Signal<Item = LayoutBox>,
+    strategy: impl Signal<Item = VerticalLayoutStrategy>,
+    requested_item_count: impl Signal<Item = usize>,
+) -> impl Signal<Item = Vec<LayoutBox>> {
     map_ref! {
         let container_box = container_box,
         let strategy = strategy,
@@ -241,11 +249,11 @@ fn lay_out_boxes_vertically(
 fn canvas_layout() {}
 
 /// Top level of any quirky UI window
-fn quirky_ui(_view: impl Signal<Item=ViewBuffer>) -> impl Signal<Item=ViewBuffer> {
+fn quirky_ui(_view: impl Signal<Item = ViewBuffer>) -> impl Signal<Item = ViewBuffer> {
     always(ViewBuffer {})
 }
 
-fn button(_props: (), _events: impl Stream<Item=WidgetEvents>) -> impl Signal<Item=ViewBuffer> {
+fn button(_props: (), _events: impl Stream<Item = WidgetEvents>) -> impl Signal<Item = ViewBuffer> {
     always(ViewBuffer {})
 }
 

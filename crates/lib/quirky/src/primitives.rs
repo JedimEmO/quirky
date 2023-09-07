@@ -1,4 +1,4 @@
-use glam::{quat, UVec2, Vec2};
+use glam::UVec2;
 use std::mem;
 use wgpu::util::DeviceExt;
 use wgpu::Device;
