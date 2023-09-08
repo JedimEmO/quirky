@@ -4,6 +4,7 @@ pub mod widget;
 pub mod widgets;
 
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::drawables::Drawable;
@@ -35,10 +36,50 @@ macro_rules! clone {
     }};
 }
 
-pub fn run_widgets(
+pub struct LayoutToken {
+    layout_counter: Arc<AtomicI64>,
+}
+
+impl LayoutToken {
+    pub fn new(counter: Arc<AtomicI64>) -> Self {
+        counter.fetch_add(1, Ordering::Relaxed);
+        Self {
+            layout_counter: counter,
+        }
+    }
+}
+
+impl Drop for LayoutToken {
+    fn drop(&mut self) {
+        self.layout_counter.fetch_add(-1, Ordering::Relaxed);
+    }
+}
+
+pub struct QuirkyAppContext {
+    layouts_in_progress: Arc<AtomicI64>,
+}
+
+impl QuirkyAppContext {
+    pub fn new() -> Self {
+        Self {
+            layouts_in_progress: Default::default(),
+        }
+    }
+
+    pub fn start_layout(&self) -> LayoutToken {
+        LayoutToken::new(self.layouts_in_progress.clone())
+    }
+
+    pub fn active_layouts(&self) -> i64 {
+        self.layouts_in_progress.load(Ordering::Relaxed)
+    }
+}
+
+pub fn run_widgets<'a>(
+    ctx: &'static QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
-    device: &Device,
-) -> (MutableVec<Drawable>, impl Future<Output = ()> + '_) {
+    device: &'a Device,
+) -> (MutableVec<Drawable>, impl Future<Output = ()> + 'a) {
     let data = MutableVec::new();
 
     let runner_fut = clone!(data, async move {
@@ -51,7 +92,7 @@ pub fn run_widgets(
                 let bb = widget.bounding_box().get();
                 let subtree_data = MutableVec::new();
 
-                futures.push(widget.run(subtree_data.clone(), device));
+                futures.push(widget.run(ctx, subtree_data.clone(), device));
 
                 let mut d = data.lock_mut();
 
@@ -177,18 +218,20 @@ pub mod drawables {
     }
 }
 
-pub fn layout(
+pub fn layout<TExtras: Send>(
     container_box: impl Signal<Item = LayoutBox> + Send,
     constraints: impl Signal<Item = Vec<Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>>> + Send,
-    layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>) -> Vec<LayoutBox> + Send,
+    extras_signal: impl Signal<Item = TExtras> + Send,
+    layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
 ) -> impl Signal<Item = Vec<LayoutBox>> + Send {
     let constraints = constraints.to_signal_vec();
     let constraints = constraints.map_signal(|x| x).to_signal_cloned();
 
     map_ref! {
         let container_box = container_box,
-        let child_constraints = constraints => {
-            layout_strategy(container_box, child_constraints)
+        let child_constraints = constraints,
+        let extras = extras_signal => {
+            layout_strategy(container_box, child_constraints, extras)
         }
     }
 }

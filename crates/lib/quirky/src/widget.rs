@@ -1,5 +1,5 @@
 use crate::drawables::Drawable;
-use crate::{LayoutBox, SizeConstraint};
+use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
 use futures_signals::signal::{ReadOnlyMutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 
@@ -12,7 +12,12 @@ pub trait Widget: Send + Sync {
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>;
     fn set_bounding_box(&self, new_box: LayoutBox);
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
-    async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device);
+    async fn run(
+        self: Arc<Self>,
+        ctx: &QuirkyAppContext,
+        drawable_data: MutableVec<Drawable>,
+        device: &Device,
+    );
 }
 
 pub mod widgets {
@@ -20,7 +25,7 @@ pub mod widgets {
 
     use crate::primitives::{Quad, Quads};
     use crate::widget::Widget;
-    use crate::{layout, LayoutBox, SizeConstraint};
+    use crate::{layout, LayoutBox, QuirkyAppContext, SizeConstraint};
     use async_trait::async_trait;
     use futures::select;
     use futures::stream::FuturesUnordered;
@@ -69,7 +74,12 @@ pub mod widgets {
             self.bounding_box.read_only()
         }
 
-        async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device) {
+        async fn run(
+            self: Arc<Self>,
+            ctx: &QuirkyAppContext,
+            drawable_data: MutableVec<Drawable>,
+            device: &Device,
+        ) {
             self.bounding_box
                 .signal()
                 .to_stream()
@@ -115,13 +125,20 @@ pub mod widgets {
             self.bounding_box.read_only()
         }
 
-        async fn run(self: Arc<Self>, drawable_data: MutableVec<Drawable>, device: &Device) {
+        async fn run(
+            self: Arc<Self>,
+            ctx: &QuirkyAppContext,
+            drawable_data: MutableVec<Drawable>,
+            device: &Device,
+        ) {
+            let extras = always(());
             let child_layouts = layout(
                 self.bounding_box().signal(),
                 self.children
                     .signal_cloned()
                     .map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
-                |a, b| {
+                extras,
+                |a, b, _| {
                     let total_items = b.len().max(1) as u32;
 
                     let item_heights = (a.size.y - b.len().max(1) as u32 * 5 + 5) / total_items;
@@ -144,7 +161,9 @@ pub mod widgets {
 
                 select! {
                     layouts = next_layouts => {
-                         child_run_futs = FuturesUnordered::new();
+                        let _layout_lock = ctx.start_layout();
+
+                        child_run_futs = FuturesUnordered::new();
 
                         let mut new_drawables = self.paint(device);
 
@@ -154,7 +173,7 @@ pub mod widgets {
                             child.set_bounding_box(*l);
                             let child_subtree = MutableVec::new_with_values(child.paint(device));
                             new_drawables.push(Drawable::SubTree {children: child_subtree.clone(), transform: l.pos, size: l.size });
-                            child_run_futs.push(child.run(child_subtree, device));
+                            child_run_futs.push(child.run(ctx, child_subtree, device));
                         });
 
                         drawable_data.lock_mut().replace_cloned(new_drawables);

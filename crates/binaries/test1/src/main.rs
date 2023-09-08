@@ -8,7 +8,7 @@ use futures_signals::signal_vec::{MutableVec, SignalVecExt};
 use glam::{uvec2, vec3, UVec2, Vec4};
 use quirky::drawables::Drawable;
 use quirky::widget::widgets::{List, Slab};
-use quirky::{clone, run_widgets, LayoutBox, SizeConstraint};
+use quirky::{clone, run_widgets, LayoutBox, QuirkyAppContext, SizeConstraint};
 use std::iter;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -81,6 +81,7 @@ pub fn drawable_tree_watch(
 
 #[tokio::main]
 async fn main() {
+    let ctx = Box::leak(Box::new(QuirkyAppContext::new()));
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -249,10 +250,12 @@ async fn main() {
         size: UVec2::new(600, 400),
     });
 
+    let direction = Mutable::new(ChildDirection::Horizontal);
+
     let boxed_layout = Arc::new(
         BoxLayout::builder()
             .children(clone!(children, move || children.signal_cloned()))
-            .child_direction(|| always(ChildDirection::Horizontal))
+            .child_direction(clone!(direction, move || direction.signal()))
             .size_constraint(|| always(SizeConstraint::Unconstrained))
             .bounding_box(bb.clone())
             .build(),
@@ -260,7 +263,7 @@ async fn main() {
 
     {
         let widgets: MutableVec<Arc<dyn Widget>> = MutableVec::new_with_values(vec![boxed_layout]);
-        let (drawables, fut) = run_widgets(widgets.clone(), device);
+        let (drawables, fut) = run_widgets(ctx, widgets.clone(), device);
         let (out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
 
         tokio::spawn(drawables_watch_fut);
@@ -287,6 +290,7 @@ async fn main() {
         ));
 
         let device = &*device;
+        let ctx = &*ctx;
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
 
@@ -320,7 +324,13 @@ async fn main() {
                         WindowEvent::KeyboardInput { input, .. } => {
                             if input.state == ElementState::Pressed {
                                 match input.scancode {
-                                    30 => children.lock_mut().push(Arc::new(Slab::default())), // s
+                                    30 => {
+                                        if direction.get() == ChildDirection::Horizontal {
+                                            direction.set(ChildDirection::Vertical);
+                                        } else {
+                                            direction.set(ChildDirection::Horizontal);
+                                        }
+                                    } // s
                                     48 => children.lock_mut().push(Arc::new(List {
                                         children: Mutable::new(
                                             (0..6)
@@ -343,6 +353,10 @@ async fn main() {
                 }
 
                 Event::RedrawRequested(_d) => {
+                    if ctx.active_layouts() > 0 {
+                        return;
+                    }
+
                     let output = surface.get_current_texture().unwrap();
                     let view = output
                         .texture
