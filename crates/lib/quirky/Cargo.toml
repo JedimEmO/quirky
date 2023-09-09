@@ -7,11 +7,13 @@ edition = "2021"
 
 [dependencies]
 async-trait.workspace = true
+async-std = "1.12.0"
 async-recursion.workspace = true
 bytemuck.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
 futures-signals-utils.workspace = true
+once_cell = "1.18.0"
 glam.workspace = true
 wgpu.workspace = true
 wgpu_macros.workspace = true

@@ -1,4 +1,5 @@
 [workspace.dependencies]
+anyhow = "1.0.72"
 async-recursion = "1.0.4"
 async-trait = "0.1.72"
 bytemuck = { version = "1.13.1", features = ["derive"] }
@@ -14,5 +15,6 @@ wgpu_macros = "0.1.0"
 [workspace]
 members = [
     "crates/binaries/test1",
-    "crates/lib/quirky"
+    "crates/lib/quirky",
+    "crates/lib/quirky-winit",
 ]

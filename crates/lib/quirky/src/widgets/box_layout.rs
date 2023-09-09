@@ -4,10 +4,8 @@ use crate::widget::Widget;
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
 use async_trait::async_trait;
-use futures::FutureExt;
-use futures::StreamExt;
-use futures_signals::signal::{Mutable, ReadOnlyMutable, Signal, SignalExt};
-use futures_signals::signal_vec::{MutableVec, SignalVecExt};
+use futures_signals::signal::{Mutable, ReadOnlyMutable, Signal};
+use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use std::sync::Arc;
 use typed_builder::TypedBuilder;
@@ -141,7 +139,6 @@ fn box_layout_strategy(
                 } else {
                     item_width
                 };
-
 
                 let pos = x_pos;
                 x_pos += item_width;

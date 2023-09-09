@@ -29,7 +29,7 @@ pub mod widgets {
     use async_trait::async_trait;
     use futures::select;
     use futures::stream::FuturesUnordered;
-    use futures::{FutureExt, StreamExt};
+    use futures::StreamExt;
     use futures_signals::signal::{always, Mutable, ReadOnlyMutable, Signal, SignalExt};
     use futures_signals::signal_vec::MutableVec;
     use glam::{uvec2, UVec2};
@@ -45,6 +45,10 @@ pub mod widgets {
     impl Widget for Slab {
         fn paint(&self, device: &Device) -> Vec<Drawable> {
             let bb = self.bounding_box.get();
+
+            if bb.size.x < 4 || bb.size.y < 4 {
+                return vec![];
+            }
 
             vec![
                 Drawable::Quad(Arc::new(Quads::new(
@@ -76,7 +80,7 @@ pub mod widgets {
 
         async fn run(
             self: Arc<Self>,
-            ctx: &QuirkyAppContext,
+            _ctx: &QuirkyAppContext,
             drawable_data: MutableVec<Drawable>,
             device: &Device,
         ) {

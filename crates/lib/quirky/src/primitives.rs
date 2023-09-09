@@ -1,8 +1,27 @@
 use glam::UVec2;
+use once_cell::sync::OnceCell;
 use std::mem;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use wgpu::Device;
+use wgpu::{
+    include_wgsl, BindGroupLayout, Device, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
+    VertexState,
+};
 use wgpu_macros::VertexLayout;
+
+static QUAD_PIPELINE: OnceCell<Arc<RenderPipeline>> = OnceCell::new();
+
+pub trait Primitive {
+    fn configure_pipeline(
+        device: &Device,
+        bind_group_layouts: &[&BindGroupLayout],
+        surface_format: TextureFormat,
+    );
+}
+
+pub trait DrawablePrimitive {
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>);
+}
 
 const INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
@@ -96,11 +115,72 @@ impl Quads {
             vertex_buffer,
         }
     }
+}
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        pass.draw_indexed(0..6, 0, 0..self.num_instances);
+impl DrawablePrimitive for Quads {
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        if let Some(pipeline) = QUAD_PIPELINE.get() {
+            pass.set_pipeline(pipeline);
+            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            pass.draw_indexed(0..6, 0, 0..self.num_instances);
+        } else {
+            println!("QUAD_PIPELINE missing!");
+        }
+    }
+}
+
+impl Primitive for Quads {
+    fn configure_pipeline(
+        device: &Device,
+        bind_group_layouts: &[&BindGroupLayout],
+        surface_format: TextureFormat,
+    ) {
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts,
+            push_constant_ranges: &[],
+        });
+
+        let shader = device.create_shader_module(include_wgsl!("quad.wgsl"));
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::LAYOUT, Quad::layout()],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Cw,
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+        });
+
+        let pipeline = Arc::new(pipeline);
+
+        QUAD_PIPELINE
+            .set(pipeline)
+            .expect("failed to set QUAD_PIPELINE");
     }
 }

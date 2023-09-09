@@ -1,25 +1,37 @@
+mod drawable_tree_watch;
 pub mod primitives;
+mod ui_camera;
 pub mod view_tree;
 pub mod widget;
 pub mod widgets;
 
+use async_std::task::{block_on, sleep};
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicI64,  Ordering};
-use std::sync::Arc;
+use std::iter;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::drawables::Drawable;
 use futures::select;
 use futures::stream::FuturesUnordered;
-use futures::Stream;
 use futures::StreamExt;
 use futures::{Future, FutureExt};
 use futures_signals::map_ref;
-use futures_signals::signal::{Signal, SignalExt};
+use futures_signals::signal::{Mutable, Signal, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use futures_signals::signal_vec::SignalVecExt;
 
+use crate::drawable_tree_watch::drawable_tree_watch;
+use crate::primitives::{DrawablePrimitive, Primitive};
+use crate::ui_camera::UiCamera2D;
 use glam::UVec2;
-use wgpu::Device;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Device, Queue,
+    ShaderStages, Surface, TextureFormat,
+};
 use widget::Widget;
 
 #[macro_export]
@@ -69,8 +81,230 @@ impl QuirkyAppContext {
     }
 }
 
-pub fn run_widgets<'a>(
-    ctx: &'static QuirkyAppContext,
+impl Default for QuirkyAppContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct QuirkyApp {
+    pub context: QuirkyAppContext,
+    pub device: Device,
+    pub queue: Queue,
+    pub viewport_size: Mutable<UVec2>,
+    pub widget: Arc<dyn Widget>,
+    surface_format: TextureFormat,
+    ui_camera: Mutex<UiCamera2D>,
+    camera_uniform_buffer: Buffer,
+    camera_bind_group_layout: BindGroupLayout,
+    camera_bind_group: BindGroup,
+    requested_drawables: Arc<Mutex<Option<Vec<Drawable>>>>,
+}
+
+impl QuirkyApp {
+    pub fn new(
+        device: Device,
+        queue: Queue,
+        surface_format: TextureFormat,
+        widget: Arc<dyn Widget>,
+    ) -> Self {
+        let ui_camera = UiCamera2D::default();
+        let (camera_buffer, camera_bind_group_layout, camera_bind_group) =
+            Self::setup(&device, &ui_camera);
+
+        Self {
+            context: QuirkyAppContext::new(),
+            device,
+            queue,
+            viewport_size: Default::default(),
+            widget,
+            surface_format,
+            ui_camera: Mutex::new(ui_camera),
+            camera_uniform_buffer: camera_buffer,
+            camera_bind_group_layout,
+            camera_bind_group,
+            requested_drawables: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn configure_primitive<T: Primitive>(&self) {
+        T::configure_pipeline(
+            &self.device,
+            &[&self.camera_bind_group_layout],
+            self.surface_format,
+        );
+    }
+
+    pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {
+        let widgets = MutableVec::new_with_values(vec![self.widget.clone()]);
+        let (drawables, fut) = run_widgets(&self.context, widgets, &self.device);
+        let (out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
+
+        let mut run_futs = FuturesUnordered::new();
+        let requested_drawables = self.requested_drawables.clone();
+
+        run_futs.push(drawables_watch_fut.boxed());
+        run_futs.push(fut.boxed());
+        run_futs.push(clone!(
+            requested_drawables,
+            clone!(
+                drawables,
+                async move {
+                    let mut out = out.fuse();
+
+                    loop {
+                        let _v = out.next().await;
+
+                        let _ = requested_drawables
+                            .lock()
+                            .unwrap()
+                            .insert(drawables.lock_ref().to_vec());
+
+                        on_new_drawables();
+                    }
+                }
+                .boxed()
+            )
+        ));
+        run_futs.push(
+            self.viewport_size
+                .signal()
+                // .throttle(|| async_std::task::sleep(Duration::from_millis(100)))
+                .for_each(|new_viewport_size| {
+                    self.ui_camera
+                        .lock()
+                        .unwrap()
+                        .resize_viewport(new_viewport_size);
+
+                    let camera_uniform = self.ui_camera.lock().unwrap().create_camera_uniform();
+
+                    self.queue.write_buffer(
+                        &self.camera_uniform_buffer,
+                        0,
+                        bytemuck::cast_slice(&[camera_uniform]),
+                    );
+
+                    self.widget.set_bounding_box(LayoutBox {
+                        pos: Default::default(),
+                        size: new_viewport_size,
+                    });
+
+                    async move {}
+                })
+                .boxed(),
+        );
+
+        loop {
+            run_futs.select_next_some().await;
+        }
+    }
+
+    pub fn draw(&self, surface: &Surface) {
+        block_on(async move {
+            while self.context.active_layouts() > 0 {
+                sleep(Duration::from_millis(5)).await;
+            }
+        });
+
+        let output = surface.get_current_texture().unwrap();
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("hi there"),
+            });
+
+        let mut drawables: Vec<Arc<dyn DrawablePrimitive>> = vec![];
+
+        if let Some(incoming_drawables) = self.requested_drawables.lock().unwrap().take() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+
+            pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            drawables.clear();
+            drawables.append(&mut render_drawables(incoming_drawables));
+            drawables.iter().for_each(|d| {
+                d.draw(&mut pass);
+            });
+        }
+
+        self.queue.submit(iter::once(encoder.finish()));
+
+        output.present();
+    }
+
+    fn setup(device: &Device, camera: &UiCamera2D) -> (Buffer, BindGroupLayout, BindGroup) {
+        let camera_uniform = camera.create_camera_uniform();
+
+        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("camera buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout: &camera_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        (camera_buffer, camera_bind_group_layout, camera_bind_group)
+    }
+}
+
+fn render_drawables(drawables: Vec<Drawable>) -> Vec<Arc<dyn DrawablePrimitive>> {
+    drawables
+        .into_iter()
+        .flat_map(|drawable| match drawable {
+            Drawable::Quad(q) => vec![q as Arc<dyn DrawablePrimitive>],
+            Drawable::SubTree {
+                children,
+                size: _,
+                transform: _,
+            } => render_drawables(children.lock_ref().to_vec()),
+            Drawable::ChildList(children) => render_drawables(children),
+        })
+        .collect()
+}
+
+pub fn run_widgets<'a, 'b: 'a>(
+    ctx: &'b QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
     device: &'a Device,
 ) -> (MutableVec<Drawable>, impl Future<Output = ()> + 'a) {
@@ -133,7 +367,7 @@ pub enum SizeConstraint {
     #[default]
     Unconstrained,
     MaxHeight(u32),
-    MaxWidth(u32)
+    MaxWidth(u32),
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, Default)]
@@ -192,12 +426,11 @@ macro_rules! assert_f32_eq {
     }};
 }
 
-
 #[cfg(test)]
 mod t {
-    use crate::run_widgets;
     use crate::widget::widgets::List;
     use crate::widget::Widget;
+    use crate::{run_widgets, QuirkyAppContext};
     use futures_signals::signal_vec::MutableVec;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -219,7 +452,7 @@ mod t {
                     required_features: Features::default()
                 },
                 |ctx| {
-                    device.lock().unwrap().insert(Some(ctx));
+                    let _ = device.lock().unwrap().insert(Some(ctx));
                 }
             )
         );
@@ -232,7 +465,8 @@ mod t {
         let widget2: Arc<dyn Widget> = Arc::new(List::default());
 
         let widgets = MutableVec::new_with_values(vec![widget.clone()]);
-        let (drawables, fut) = run_widgets(widgets.clone(), &ctx.device);
+        let qctx = Box::leak(Box::new(QuirkyAppContext::new()));
+        let (drawables, fut) = run_widgets(qctx, widgets.clone(), &ctx.device);
 
         let _j = tokio::spawn(fut);
 
