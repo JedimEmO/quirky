@@ -48,14 +48,14 @@ pub mod widgets {
 
             vec![
                 Drawable::Quad(Arc::new(Quads::new(
-                    vec![Quad::new(bb.pos, bb.size, [0.2, 0.2, 0.2, 1.0])],
+                    vec![Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0])],
                     device,
                 ))),
                 Drawable::Quad(Arc::new(Quads::new(
                     vec![Quad::new(
-                        bb.pos + UVec2::new(2, 2),
-                        bb.size - UVec2::new(4, 4),
-                        [0.3, 0.3, 0.3, 1.0],
+                        bb.pos + UVec2::new(1, 1),
+                        bb.size - UVec2::new(2, 2),
+                        [0.005, 0.005, 0.005, 1.0],
                     )],
                     device,
                 ))),

@@ -120,8 +120,7 @@ fn box_layout_strategy(
             container_box.size.x - min_requirements_x
         };
 
-        let per_remaining_width_bonus = remaining_width / total_items;
-
+        let mut per_remaining_width_bonus = remaining_width / total_items;
         let mut x_pos = 0;
 
         child_constraints
@@ -133,11 +132,22 @@ fn box_layout_strategy(
                 };
 
                 let item_width = base_x + per_remaining_width_bonus;
+                let item_width = if let SizeConstraint::MaxWidth(wm) = i {
+                    if item_width > *wm {
+                        per_remaining_width_bonus += item_width - wm;
+                    }
+
+                    *wm.min(&item_width)
+                } else {
+                    item_width
+                };
+
+
                 let pos = x_pos;
                 x_pos += item_width;
 
                 LayoutBox {
-                    pos: UVec2::new(pos, 0),
+                    pos: UVec2::new(container_box.pos.x + pos, container_box.pos.y),
                     size: UVec2::new(item_width, container_box.size.y),
                 }
             })
@@ -149,7 +159,7 @@ fn box_layout_strategy(
             container_box.size.y - min_requirements_y
         };
 
-        let per_remaining_width_bonus = remaining_height / total_items;
+        let mut per_remaining_height_bonus = remaining_height / total_items;
 
         let mut y_pos = 0;
 
@@ -161,12 +171,22 @@ fn box_layout_strategy(
                     _ => 0,
                 };
 
-                let item_height = base_y + per_remaining_width_bonus;
+                let item_height = base_y + per_remaining_height_bonus;
+                let item_height = if let SizeConstraint::MaxHeight(hm) = i {
+                    if item_height > *hm {
+                        per_remaining_height_bonus += item_height - hm;
+                    }
+
+                    *hm.min(&item_height)
+                } else {
+                    item_height
+                };
+
                 let pos = y_pos;
                 y_pos += item_height;
 
                 LayoutBox {
-                    pos: UVec2::new(0, pos),
+                    pos: UVec2::new(container_box.pos.x, container_box.pos.y + pos),
                     size: UVec2::new(container_box.size.x, item_height),
                 }
             })

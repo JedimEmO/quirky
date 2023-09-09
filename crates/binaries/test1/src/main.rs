@@ -13,6 +13,8 @@ use std::iter;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use futures::executor::block_on;
+use tokio::task::block_in_place;
 use tokio::time::sleep;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -65,14 +67,13 @@ async fn drawable_tree_watch_inner(
 
 pub fn drawable_tree_watch(
     widgets: MutableVec<Drawable>,
-) -> (Pin<Box<impl Stream<Item = ()>>>, impl Future<Output = ()>) {
+) -> (Pin<Box<impl Stream<Item=()>>>, impl Future<Output=()>) {
     let (tx, rx) = futures::channel::mpsc::channel(100);
 
     let fut = drawable_tree_watch_inner(widgets, tx);
 
     let rx = Box::pin(
         futures_signals::signal::from_stream(rx)
-            .throttle(|| sleep(Duration::from_millis(50)))
             .map(|_| ())
             .to_stream(),
     );
@@ -223,26 +224,38 @@ async fn main() {
     let elproxy = event_loop.create_proxy();
 
     let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
-        Arc::new(List {
-            children: Mutable::new(
-                (0..6)
-                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
-                    .collect(),
-            ),
-            requested_size: Mutable::new(SizeConstraint::MinSize(UVec2::new(300, 200))),
-            bounding_box: Default::default(),
-            background: Some([1.0, 0.4, 0.4, 1.0]),
-        }),
-        Arc::new(List {
-            children: Mutable::new(
-                (0..6)
-                    .map(|_| Arc::new(Slab::default()) as Arc<dyn Widget>)
-                    .collect(),
-            ),
-            requested_size: Mutable::new(SizeConstraint::Unconstrained),
-            bounding_box: Default::default(),
-            background: Some([0.4, 1.0, 0.4, 1.0]),
-        }),
+        Arc::new(BoxLayout::builder()
+            .children(|| always(vec![
+                Arc::new(Slab::default()) as Arc<dyn Widget>
+            ]))
+            .size_constraint(|| always(SizeConstraint::MaxHeight(150)))
+            .child_direction(|| always(ChildDirection::Horizontal))
+            .build()
+        ),
+        Arc::new(BoxLayout::builder()
+            .children(|| always(vec![
+                Arc::new(BoxLayout::builder()
+                    .child_direction(|| always(ChildDirection::Vertical))
+                    .children(|| always(vec![
+                        Arc::new(Slab::default()) as Arc<dyn Widget>,
+                        Arc::new(Slab::default()) as Arc<dyn Widget>,
+                        Arc::new(Slab::default()) as Arc<dyn Widget>,
+                        Arc::new(Slab::default()) as Arc<dyn Widget>,
+                    ]))
+                    .size_constraint(|| always(SizeConstraint::MaxWidth(300)))
+                    .build()) as Arc<dyn Widget>,
+                Arc::new(BoxLayout::builder()
+                    .child_direction(|| always(ChildDirection::Vertical))
+                    .children(|| always(vec![
+                        Arc::new(Slab::default()) as Arc<dyn Widget>
+                    ]))
+                    .size_constraint(|| always(SizeConstraint::Unconstrained))
+                    .build()) as Arc<dyn Widget>,
+            ]))
+            .size_constraint(|| always(SizeConstraint::MinSize(UVec2::new(1, 150))))
+            .child_direction(|| always(ChildDirection::Horizontal))
+            .build()
+        ),
     ]);
 
     let bb = Mutable::new(LayoutBox {
@@ -250,7 +263,7 @@ async fn main() {
         size: UVec2::new(600, 400),
     });
 
-    let direction = Mutable::new(ChildDirection::Horizontal);
+    let direction = Mutable::new(ChildDirection::Vertical);
 
     let boxed_layout = Arc::new(
         BoxLayout::builder()
@@ -305,20 +318,24 @@ async fn main() {
                             if new_size.height > 0 && new_size.width > 0 {
                                 config.width = new_size.width;
                                 config.height = new_size.height;
-                                bb.set(LayoutBox {
-                                    pos: Default::default(),
-                                    size: UVec2::new(config.width, config.height),
-                                });
-                                let next_count = config.height / 100;
-                                num_quads.set(next_count);
+
+                                // Give the layout a little bit of time to stabilize
+                                let _lock = ctx.start_layout();
+
                                 surface.configure(device, &config);
                                 ui_camera.resize_viewport(UVec2::new(config.width, config.height));
                                 let camera_uniform = ui_camera.create_camera_uniform();
+
                                 queue.write_buffer(
                                     &camera_buffer,
                                     0,
                                     bytemuck::cast_slice(&[camera_uniform]),
-                                )
+                                );
+
+                                bb.set(LayoutBox {
+                                    pos: Default::default(),
+                                    size: UVec2::new(config.width, config.height),
+                                });
                             }
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
@@ -353,9 +370,11 @@ async fn main() {
                 }
 
                 Event::RedrawRequested(_d) => {
-                    if ctx.active_layouts() > 0 {
-                        return;
-                    }
+                    block_on(async move{
+                        while ctx.active_layouts() > 0 {
+                            sleep(Duration::from_millis(5)).await;
+                        }
+                    });
 
                     let output = surface.get_current_texture().unwrap();
                     let view = output
@@ -375,10 +394,10 @@ async fn main() {
                                 resolve_target: None,
                                 ops: wgpu::Operations {
                                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                                        r: 0.05,
-                                        g: 0.05,
-                                        b: 0.05,
-                                        a: 0.5,
+                                        r: 0.0,
+                                        g: 0.0,
+                                        b: 0.0,
+                                        a: 1.0,
                                     }),
                                     store: true,
                                 },
