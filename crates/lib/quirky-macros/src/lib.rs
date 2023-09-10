@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Expr, GenericArgument, GenericParam, Generics, Ident, Meta, PathArguments, Type, TypeParam, TypePath};
+use syn::{Expr, Ident, Type};
 
 struct FnSignalField {
     pub field_name: Ident,
@@ -9,7 +9,7 @@ struct FnSignalField {
     pub signal_name: Ident,
     pub signal_type: Type,
     pub signal_fn_name: Ident,
-    pub default: Option<Expr>
+    pub default: Option<Expr>,
 }
 
 #[proc_macro_attribute]
@@ -17,7 +17,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let struct_ = syn::parse::<syn::ItemStruct>(input).expect("failed to parse struct");
     let builder_name =
         syn::parse_str::<Ident>(format!("{}Builder", struct_.ident).as_str()).unwrap();
-    let struct_name = struct_.ident.clone();
+    let struct_name = struct_.ident;
 
     let fields = struct_
         .fields
@@ -34,7 +34,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             let attrs = f.attrs.clone();
 
-            let default = if let Some(d) = attrs.iter().find(|a|a.path().is_ident("default")) {
+            let default = if let Some(d) = attrs.iter().find(|a| a.path().is_ident("default")) {
                 let expr = d.parse_args().unwrap();
                 Some(expr)
             } else {
@@ -66,13 +66,13 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                 signal_name,
                 signal_type,
                 signal_fn_name,
-                default
+                default,
             }
         })
         .collect::<Vec<_>>();
 
     let builder_struct_generics_params_struct = builder_struct_fields.iter().map(|f| {
-        let FnSignalField { field_name, signal_name, signal_type, signal_fn_name, field_type, default } = f;
+        let FnSignalField { signal_name, signal_type, signal_fn_name, field_type, .. } = f;
         quote! { #signal_name: #signal_type + 'static = futures_signals::signal::Always<#field_type>, #signal_fn_name: Fn() -> #signal_name = fn() -> futures_signals::signal::Always<#field_type>}
     }).collect::<Vec<_>>();
 
@@ -85,7 +85,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                 signal_fn_name,
                 ..
             } = f;
-            quote! { #signal_name: #signal_type + 'static, #signal_fn_name: Fn() -> #signal_name }
+            quote! { #signal_name: #signal_type + Send + Sync + Unpin + 'static, #signal_fn_name: Fn() -> #signal_name + Send + Sync + 'static }
         })
         .collect::<Vec<_>>();
 
@@ -116,14 +116,17 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let builder_struct_members_defaults = builder_struct_fields
         .iter()
         .map(|f| {
-            let FnSignalField { field_name, default, .. } = f;
+            let FnSignalField {
+                field_name,
+                default,
+                ..
+            } = f;
 
             if let Some(default) = default {
                 quote! { #field_name: Some(|| futures_signals::signal::always(#default)) }
             } else {
                 quote! { #field_name: None }
             }
-
         })
         .collect::<Vec<_>>();
 
@@ -148,15 +151,43 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let builder_field_signal_setters = builder_struct_fields.iter().map(|f| {
-        let FnSignalField { field_name, field_type, signal_name, signal_type, signal_fn_name, default, } = f;
+        let FnSignalField { field_name, field_type, signal_name, .. } = f;
         let fn_sig_name = syn::parse_str::<Ident>(format!("{}_signal", field_name).as_str()).unwrap();
+
+        let builder_struct_generics_params_names_out = builder_struct_fields
+            .iter()
+            .map(|f| {
+                let FnSignalField {
+                    signal_name: sn2,
+                    signal_fn_name: sfn2,
+                    ..
+                } = f;
+
+                if signal_name == sn2 {
+                    quote! { T, TFN }
+                } else {
+                    quote! { #sn2, #sfn2 }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let other_fields = builder_struct_fields.iter().filter_map(|f| {
+            if &f.field_name == field_name {
+                None
+            } else {
+                let name = f.field_name.clone();
+
+                Some(quote! {#name: self.#name })
+            }
+        }).collect::<Vec<_>>();
+
 
         quote! {
             impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
-                pub fn #fn_sig_name(self, value: #signal_fn_name) -> #builder_name<#(#builder_struct_generics_params_names),*> {
+                pub fn #fn_sig_name<T: futures_signals::signal::Signal<Item=#field_type> + Sync + Send + Unpin, TFN: Fn() -> T>(self, value: TFN) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
                     #builder_name {
                         #field_name: Some(value),
-                        ..self
+                        #(#other_fields),*
                     }
                 }
             }
@@ -164,7 +195,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     }).collect::<Vec<_>>();
 
     let builder_field_value_setters = builder_struct_fields.iter().map(|f| {
-        let FnSignalField { field_name, field_type, signal_name, signal_type, signal_fn_name, default, } = f;
+        let FnSignalField { field_name, field_type, signal_name, .. } = f;
 
         let other_fields = builder_struct_fields.iter().filter_map(|f| {
             if &f.field_name == field_name {
@@ -180,7 +211,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
             let FnSignalField { signal_name: sn, signal_fn_name: sfn, .. } = f;
 
             if sn == signal_name {
-                quote! { futures_signals::signal::Always<#field_type>, Box<dyn Fn() -> futures_signals::signal::Always<#field_type>> }
+                quote! { futures_signals::signal::Always<#field_type>, Box<dyn Fn() -> futures_signals::signal::Always<#field_type> + Send + Sync> }
             } else {
                 quote! { #sn, #sfn }
             }

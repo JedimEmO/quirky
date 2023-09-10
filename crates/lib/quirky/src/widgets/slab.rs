@@ -1,16 +1,16 @@
-use std::sync::Arc;
-use async_trait::async_trait;
-use futures_signals::signal::{always, Mutable, ReadOnlyMutable, Signal};
-use futures_signals::signal_vec::MutableVec;
-use futures_signals::signal::SignalExt;
-use futures::StreamExt;
-use glam::{UVec2, uvec2};
-use wgpu::Device;
-use quirky_macros::widget;
 use crate::drawables::Drawable;
-use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
 use crate::primitives::{Quad, Quads};
 use crate::widget::Widget;
+use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
+use async_trait::async_trait;
+use futures::StreamExt;
+use futures_signals::signal::SignalExt;
+use futures_signals::signal::{always, ReadOnlyMutable, Signal};
+use futures_signals::signal_vec::MutableVec;
+use glam::{uvec2, UVec2};
+use quirky_macros::widget;
+use std::sync::Arc;
+use wgpu::Device;
 
 #[widget]
 pub struct Slab {
@@ -20,7 +20,11 @@ pub struct Slab {
 }
 
 #[async_trait]
-impl<ColorSignal: futures_signals::signal::Signal<Item=[f32; 4]> + Send + Sync + 'static, ColorSignalFn: Fn() -> ColorSignal + Send + Sync> Widget for Slab<ColorSignal, ColorSignalFn> {
+impl<
+        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignalFn: Fn() -> ColorSignal + Send + Sync,
+    > Widget for Slab<ColorSignal, ColorSignalFn>
+{
     fn paint(&self, device: &Device) -> Vec<Drawable> {
         let bb = self.bounding_box.get();
 
@@ -75,8 +79,8 @@ impl<ColorSignal: futures_signals::signal::Signal<Item=[f32; 4]> + Send + Sync +
 
 #[cfg(test)]
 mod test {
-    use futures_signals::signal::always;
     use crate::widgets::slab::SlabBuilder;
+    use futures_signals::signal::always;
 
     #[test]
     fn slab_builder_test() {

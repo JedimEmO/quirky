@@ -1,14 +1,13 @@
 use crate::drawables::Drawable;
-
 use crate::widget::Widget;
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
 use async_trait::async_trait;
-use futures_signals::signal::{Mutable, ReadOnlyMutable, Signal};
+use futures_signals::signal::{ReadOnlyMutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
+use quirky_macros::widget;
 use std::sync::Arc;
-use typed_builder::TypedBuilder;
 use wgpu::Device;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -17,38 +16,38 @@ pub enum ChildDirection {
     Vertical,
 }
 
-#[derive(TypedBuilder)]
-pub struct BoxLayout<
-    TChildrenFn: Fn() -> TChildrenSignal,
-    TChildrenSignal: Signal<Item = Vec<Arc<dyn Widget>>>,
-    TChildDirectionFn: Fn() -> TChildDirectionSignal,
-    TChildDirectionSignal: Signal<Item = ChildDirection>,
-    TSizeConstraintsFn: Fn() -> TSizeConstraintsSignal,
-    TSizeConstraintsSignal: Signal<Item = SizeConstraint>,
-> {
-    pub children: TChildrenFn,
-    pub child_direction: TChildDirectionFn,
-    pub size_constraint: TSizeConstraintsFn,
-    #[builder(default)]
-    pub bounding_box: Mutable<LayoutBox>,
+#[widget]
+pub struct BoxLayout {
+    #[signal]
+    pub children: Vec<Arc<dyn Widget>>,
+    #[signal]
+    #[default(ChildDirection::Vertical)]
+    pub child_direction: ChildDirection,
+    #[signal]
+    #[default(SizeConstraint::Unconstrained)]
+    pub size_constraint: SizeConstraint,
 }
 
 #[async_trait]
 impl<
-        TChildrenFn: Fn() -> TChildrenSignal + Send + Sync + 'static,
-        TChildrenSignal: Signal<Item = Vec<Arc<dyn Widget>>> + Send + Unpin + 'static,
-        TChildDirectionFn: Fn() -> TChildDirectionSignal + Send + Sync + 'static,
-        TChildDirectionSignal: Signal<Item = ChildDirection> + Send + 'static,
-        TSizeConstraintsFn: Fn() -> TSizeConstraintsSignal + Send + Sync + 'static,
-        TSizeConstraintsSignal: Signal<Item = SizeConstraint> + Unpin + Send + 'static,
+        ChildrenSignal: futures_signals::signal::Signal<Item = Vec<Arc<dyn Widget>>>
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
+        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
+        ChildDirectionSignal: futures_signals::signal::Signal<Item = ChildDirection> + Send + Sync + Unpin + 'static,
+        ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
+        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
+        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
     > Widget
     for BoxLayout<
-        TChildrenFn,
-        TChildrenSignal,
-        TChildDirectionFn,
-        TChildDirectionSignal,
-        TSizeConstraintsFn,
-        TSizeConstraintsSignal,
+        ChildrenSignal,
+        ChildrenSignalFn,
+        ChildDirectionSignal,
+        ChildDirectionSignalFn,
+        SizeConstraintSignal,
+        SizeConstraintSignalFn,
     >
 {
     fn paint(&self, _device: &Device) -> Vec<Drawable> {
@@ -193,19 +192,18 @@ fn box_layout_strategy(
 
 #[cfg(test)]
 mod test {
-    use crate::widgets::box_layout::BoxLayout;
+    use crate::widgets::box_layout::BoxLayoutBuilder;
     use crate::{clone, SizeConstraint};
-    use futures_signals::signal::{always, Mutable};
+    use futures_signals::signal::Mutable;
 
     #[test]
     fn box_layout_usage() {
         let constraint = Mutable::new(SizeConstraint::Unconstrained);
 
-        let _box_layout_props = BoxLayout::builder()
-            .children(|| always(vec![]))
-            .child_direction(|| always(super::ChildDirection::Vertical))
-            .size_constraint(clone!(constraint, move || constraint.signal()))
-            .bounding_box(Default::default())
+        let _box_layout_props = BoxLayoutBuilder::new()
+            .children(vec![])
+            .child_direction(super::ChildDirection::Vertical)
+            .size_constraint_signal(clone!(constraint, move || constraint.signal()))
             .build();
     }
 }

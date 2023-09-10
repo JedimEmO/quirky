@@ -428,8 +428,8 @@ macro_rules! assert_f32_eq {
 
 #[cfg(test)]
 mod t {
-    use crate::widget::widgets::List;
     use crate::widget::Widget;
+    use crate::widgets::slab::SlabBuilder;
     use crate::{run_widgets, QuirkyAppContext};
     use futures_signals::signal_vec::MutableVec;
     use std::sync::{Arc, Mutex};
@@ -461,8 +461,8 @@ mod t {
             device.lock().unwrap().take().unwrap().take().unwrap(),
         ));
 
-        let widget: Arc<dyn Widget> = Arc::new(List::default());
-        let widget2: Arc<dyn Widget> = Arc::new(List::default());
+        let widget: Arc<dyn Widget> = SlabBuilder::new().build();
+        let widget2: Arc<dyn Widget> = SlabBuilder::new().build();
 
         let widgets = MutableVec::new_with_values(vec![widget.clone()]);
         let qctx = Box::leak(Box::new(QuirkyAppContext::new()));
@@ -477,6 +477,6 @@ mod t {
 
         sleep(Duration::from_millis(100)).await;
 
-        assert_eq!(drawables.lock_ref().len(), 1);
+        assert_eq!(drawables.lock_ref().len(), 2);
     }
 }

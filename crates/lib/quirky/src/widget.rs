@@ -9,7 +9,7 @@ use wgpu::Device;
 #[async_trait::async_trait]
 pub trait Widget: Send + Sync {
     fn paint(&self, device: &Device) -> Vec<Drawable>;
-    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>;
+    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>;
     fn set_bounding_box(&self, new_box: LayoutBox);
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
     async fn run(

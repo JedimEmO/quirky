@@ -1,70 +1,16 @@
-use futures_signals::signal::always;
 use futures_signals::signal::Mutable;
 use glam::UVec2;
 use quirky::primitives::Quads;
 use quirky::widget::Widget;
-use quirky::widgets::box_layout::{BoxLayout, ChildDirection};
-use quirky::{clone, LayoutBox, SizeConstraint};
+use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky::widgets::slab::SlabBuilder;
+use quirky::{clone, SizeConstraint};
 use quirky_winit::QuirkyWinitApp;
 use std::sync::Arc;
-use quirky::widgets::slab::{Slab, SlabBuilder};
 
 #[tokio::main]
 async fn main() {
-    let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
-        Arc::new(
-            BoxLayout::builder()
-                .children(|| always(vec![SlabBuilder::new().build() as Arc<dyn Widget>]))
-                .size_constraint(|| always(SizeConstraint::MaxHeight(150)))
-                .child_direction(|| always(ChildDirection::Horizontal))
-                .build(),
-        ),
-        Arc::new(
-            BoxLayout::builder()
-                .children(|| {
-                    always(vec![
-                        Arc::new(
-                            BoxLayout::builder()
-                                .child_direction(|| always(ChildDirection::Vertical))
-                                .children(|| {
-                                    always(vec![
-                                        SlabBuilder::new().build() as Arc<dyn Widget>,
-                                        SlabBuilder::new().build(),
-                                        SlabBuilder::new().build(),
-                                        SlabBuilder::new().build(),
-                                    ])
-                                })
-                                .size_constraint(|| always(SizeConstraint::MaxWidth(300)))
-                                .build(),
-                        ) as Arc<dyn Widget>,
-                        Arc::new(
-                            BoxLayout::builder()
-                                .child_direction(|| always(ChildDirection::Vertical))
-                                .children(|| {
-                                    always(vec![SlabBuilder::new().build() as Arc<dyn Widget>])
-                                })
-                                .size_constraint(|| always(SizeConstraint::Unconstrained))
-                                .build(),
-                        ) as Arc<dyn Widget>,
-                    ])
-                })
-                .size_constraint(|| always(SizeConstraint::MinSize(UVec2::new(1, 150))))
-                .child_direction(|| always(ChildDirection::Horizontal))
-                .build(),
-        ),
-    ]);
-
-    let boxed_layout = Arc::new(
-        BoxLayout::builder()
-            .children(clone!(children, move || children.signal_cloned()))
-            .child_direction(|| always(ChildDirection::Vertical))
-            .size_constraint(|| always(SizeConstraint::Unconstrained))
-            .bounding_box(Mutable::new(LayoutBox {
-                pos: Default::default(),
-                size: UVec2::new(800, 600),
-            }))
-            .build(),
-    );
+    let boxed_layout = simple_panel_layout();
 
     let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout).await.unwrap();
 
@@ -74,4 +20,39 @@ async fn main() {
 
     tokio::spawn(quirky_app.run(draw_notifier));
     quirky_winit_app.run();
+}
+
+fn simple_panel_layout() -> Arc<dyn Widget> {
+    let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
+        BoxLayoutBuilder::new()
+            .children(vec![SlabBuilder::new().build()])
+            .size_constraint(SizeConstraint::MaxHeight(150))
+            .child_direction(ChildDirection::Horizontal)
+            .build(),
+        BoxLayoutBuilder::new()
+            .children(vec![
+                BoxLayoutBuilder::new()
+                    .child_direction(ChildDirection::Vertical)
+                    .children(vec![
+                        SlabBuilder::new().build(),
+                        SlabBuilder::new().build(),
+                        SlabBuilder::new().build(),
+                        SlabBuilder::new().build(),
+                    ])
+                    .size_constraint(SizeConstraint::MaxWidth(300))
+                    .build(),
+                BoxLayoutBuilder::new()
+                    .child_direction(ChildDirection::Vertical)
+                    .children(vec![SlabBuilder::new().build()])
+                    .size_constraint(SizeConstraint::Unconstrained)
+                    .build(),
+            ])
+            .size_constraint(SizeConstraint::MinSize(UVec2::new(1, 150)))
+            .child_direction(ChildDirection::Horizontal)
+            .build(),
+    ]);
+
+    BoxLayoutBuilder::new()
+        .children_signal(clone!(children, move || children.signal_cloned()))
+        .build()
 }
