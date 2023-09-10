@@ -215,14 +215,16 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         #(#builder_field_value_setters)*
 
         impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
-            pub fn build(self) -> #struct_name<#(#builder_struct_generics_params_names),*> {
-                #struct_name {
+            pub fn build(self) -> Arc<#struct_name<#(#builder_struct_generics_params_names),*>> {
+                Arc::new(#struct_name {
+                    bounding_box: Default::default(),
                     #(#real_struct_member_ctors),*
-                }
+                })
             }
         }
 
         pub struct #struct_name<#(#builder_struct_generics_params),*> {
+            bounding_box: futures_signals::signal::Mutable<LayoutBox>,
             #(#real_struct_members),*
         }
     }.into()

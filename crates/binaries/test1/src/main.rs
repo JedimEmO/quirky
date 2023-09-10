@@ -2,19 +2,19 @@ use futures_signals::signal::always;
 use futures_signals::signal::Mutable;
 use glam::UVec2;
 use quirky::primitives::Quads;
-use quirky::widget::widgets::Slab;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayout, ChildDirection};
 use quirky::{clone, LayoutBox, SizeConstraint};
 use quirky_winit::QuirkyWinitApp;
 use std::sync::Arc;
+use quirky::widgets::slab::{Slab, SlabBuilder};
 
 #[tokio::main]
 async fn main() {
     let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
         Arc::new(
             BoxLayout::builder()
-                .children(|| always(vec![Arc::new(Slab::default()) as Arc<dyn Widget>]))
+                .children(|| always(vec![SlabBuilder::new().build() as Arc<dyn Widget>]))
                 .size_constraint(|| always(SizeConstraint::MaxHeight(150)))
                 .child_direction(|| always(ChildDirection::Horizontal))
                 .build(),
@@ -28,10 +28,10 @@ async fn main() {
                                 .child_direction(|| always(ChildDirection::Vertical))
                                 .children(|| {
                                     always(vec![
-                                        Arc::new(Slab::default()) as Arc<dyn Widget>,
-                                        Arc::new(Slab::default()) as Arc<dyn Widget>,
-                                        Arc::new(Slab::default()) as Arc<dyn Widget>,
-                                        Arc::new(Slab::default()) as Arc<dyn Widget>,
+                                        SlabBuilder::new().build() as Arc<dyn Widget>,
+                                        SlabBuilder::new().build(),
+                                        SlabBuilder::new().build(),
+                                        SlabBuilder::new().build(),
                                     ])
                                 })
                                 .size_constraint(|| always(SizeConstraint::MaxWidth(300)))
@@ -41,7 +41,7 @@ async fn main() {
                             BoxLayout::builder()
                                 .child_direction(|| always(ChildDirection::Vertical))
                                 .children(|| {
-                                    always(vec![Arc::new(Slab::default()) as Arc<dyn Widget>])
+                                    always(vec![SlabBuilder::new().build() as Arc<dyn Widget>])
                                 })
                                 .size_constraint(|| always(SizeConstraint::Unconstrained))
                                 .build(),
