@@ -17,4 +17,5 @@ members = [
     "crates/binaries/test1",
     "crates/lib/quirky",
     "crates/lib/quirky-winit",
+    "crates/lib/quirky-macros",
 ]
