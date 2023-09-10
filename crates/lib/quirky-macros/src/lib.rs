@@ -25,6 +25,12 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("signal")))
         .collect::<Vec<_>>();
 
+    let internal_fields = struct_
+        .fields
+        .iter()
+        .filter(|f| !f.attrs.iter().any(|attr| attr.path().is_ident("signal")))
+        .collect::<Vec<_>>();
+
     let builder_struct_fields = fields
         .iter()
         .map(|f| {
@@ -229,6 +235,25 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     }).collect::<Vec<_>>();
 
+    let struct_fields_decl = internal_fields
+        .iter()
+        .map(|f| {
+            let ident = f.ident.clone().unwrap();
+            let ty = f.ty.clone();
+
+            quote! { #ident: #ty }
+        })
+        .collect::<Vec<_>>();
+
+    let struct_fields_init = internal_fields
+        .iter()
+        .map(|f| {
+            let ident = f.ident.clone().unwrap();
+
+            quote! { #ident: Default::default() }
+        })
+        .collect::<Vec<_>>();
+
     quote! {
         pub struct #builder_name<#(#builder_struct_generics_params_struct),*> {
             #(#builder_struct_members),*
@@ -248,15 +273,19 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
             pub fn build(self) -> Arc<#struct_name<#(#builder_struct_generics_params_names),*>> {
                 Arc::new(#struct_name {
+                    id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
-                    #(#real_struct_member_ctors),*
+                    #(#real_struct_member_ctors),*,
+                    #(#struct_fields_init),*
                 })
             }
         }
 
         pub struct #struct_name<#(#builder_struct_generics_params),*> {
+            id: uuid::Uuid,
             bounding_box: futures_signals::signal::Mutable<LayoutBox>,
-            #(#real_struct_members),*
+            #(#real_struct_members),*,
+            #(#struct_fields_decl),*
         }
     }.into()
 }

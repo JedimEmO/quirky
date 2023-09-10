@@ -1,10 +1,13 @@
 use glam::UVec2;
 use quirky::widget::Widget;
-use quirky::QuirkyApp;
+use quirky::{MouseEvent, QuirkyApp, WidgetEvent};
 use std::sync::Arc;
-use wgpu::{Backends, Instance, InstanceDescriptor, Surface, SurfaceCapabilities, TextureFormat};
-use winit::dpi::PhysicalSize;
-use winit::event::{Event, WindowEvent};
+use wgpu::{
+    Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
+    TextureFormat,
+};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
@@ -86,6 +89,9 @@ impl QuirkyWinitApp {
             .take()
             .expect("invalid QuirkiWinitApp: missing event loop");
 
+        let mut mouse_pos = PhysicalPosition::default();
+        let mut prev_hovered: Option<uuid::Uuid> = None;
+
         event_loop.run(move |event, _target, control_flow: &mut ControlFlow| {
             *control_flow = ControlFlow::Wait;
 
@@ -99,6 +105,35 @@ impl QuirkyWinitApp {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::MouseInput { state,  .. } => {
+                        if state == ElementState::Pressed {
+                            self.quirky_app
+                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32));
+                        }
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        mouse_pos = position;
+                        let pos = UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32);
+                        if let Some(widgets) = self.quirky_app.get_widgets_at(pos) {
+                            if let Some(p) = prev_hovered {
+                                self.quirky_app.dispatch_event_to_widget(
+                                    p,
+                                    WidgetEvent::MouseEvent {
+                                        event: MouseEvent::Leave {},
+                                    },
+                                );
+                            }
+
+                            let w = widgets.first().unwrap();
+                            prev_hovered = Some(*w);
+                            self.quirky_app.dispatch_event_to_widget(
+                                *w,
+                                WidgetEvent::MouseEvent {
+                                    event: MouseEvent::Move { pos },
+                                },
+                            );
+                        }
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -113,7 +148,7 @@ impl QuirkyWinitApp {
                 format: self.surface_format,
                 width: new_size.width,
                 height: new_size.height,
-                present_mode: self.surface_capabilities.present_modes[0],
+                present_mode: PresentMode::AutoVsync,
                 alpha_mode: self.surface_capabilities.alpha_modes[0],
                 view_formats: vec![],
             };

@@ -1,6 +1,7 @@
 use crate::drawables::Drawable;
+use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::Widget;
-use crate::{layout, LayoutBox, QuirkyAppContext, SizeConstraint};
+use crate::{layout, LayoutBox, SizeConstraint};
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::{select, StreamExt};
@@ -11,6 +12,7 @@ use wgpu::Device;
 
 pub async fn run_widget_with_children<TExtras: Send>(
     widget: Arc<dyn Widget>,
+    children_data: MutableVec<Arc<dyn Widget>>,
     ctx: &QuirkyAppContext,
     drawable_data: MutableVec<Drawable>,
     widget_children: impl Signal<Item = Vec<Arc<dyn Widget>>> + Unpin,
@@ -18,7 +20,6 @@ pub async fn run_widget_with_children<TExtras: Send>(
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
     device: &Device,
 ) {
-    let children_data: MutableVec<Arc<dyn Widget>> = MutableVec::new();
     let children = children_data.signal_vec_cloned().to_signal_cloned();
 
     let child_layouts = layout(

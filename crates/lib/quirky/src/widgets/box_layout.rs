@@ -1,13 +1,15 @@
 use crate::drawables::Drawable;
+use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::Widget;
 use crate::widgets::run_widget_with_children::run_widget_with_children;
-use crate::{LayoutBox, QuirkyAppContext, SizeConstraint};
+use crate::{LayoutBox, SizeConstraint};
 use async_trait::async_trait;
 use futures_signals::signal::{ReadOnlyMutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use quirky_macros::widget;
 use std::sync::Arc;
+use uuid::Uuid;
 use wgpu::Device;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -26,6 +28,7 @@ pub struct BoxLayout {
     #[signal]
     #[default(SizeConstraint::Unconstrained)]
     pub size_constraint: SizeConstraint,
+    child_data: MutableVec<Arc<dyn Widget>>,
 }
 
 #[async_trait]
@@ -50,6 +53,10 @@ impl<
         SizeConstraintSignalFn,
     >
 {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+
     fn paint(&self, _device: &Device) -> Vec<Drawable> {
         let _bb = self.bounding_box.get();
 
@@ -68,6 +75,25 @@ impl<
         self.bounding_box.read_only()
     }
 
+    fn get_widget_at(&self, pos: UVec2, path: Vec<Uuid>) -> Option<Vec<Uuid>> {
+        let bb = self.bounding_box.get();
+
+        if !bb.contains(pos) {
+            return None;
+        }
+
+        let child_data = self.child_data.lock_ref();
+
+        for c in child_data.iter().rev() {
+            if let Some(mut out_path) = c.get_widget_at(pos, path.clone()) {
+                out_path.push(self.id);
+                return Some(out_path);
+            }
+        }
+
+        None
+    }
+
     async fn run(
         self: Arc<Self>,
         ctx: &QuirkyAppContext,
@@ -76,6 +102,7 @@ impl<
     ) {
         run_widget_with_children(
             self.clone(),
+            self.child_data.clone(),
             ctx,
             drawable_data,
             (self.children)(),

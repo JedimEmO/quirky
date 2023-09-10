@@ -114,6 +114,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-broadcast"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c48ccdbf6ca6b121e0f586cbc0e73ae440e56c67c30fa0873b4e110d9c26d2b"
+dependencies = [
+ "event-listener",
+ "futures-core",
+]
+
+[[package]]
 name = "async-channel"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1563,6 +1573,8 @@ checksum = "46b2164ebdb1dfeec5e337be164292351e11daf63a05174c6776b2f47460f0c9"
 name = "quirky"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-broadcast",
  "async-recursion",
  "async-std",
  "async-trait",
@@ -1575,6 +1587,7 @@ dependencies = [
  "quirky-macros",
  "tokio",
  "typed-builder",
+ "uuid",
  "wgpu",
  "wgpu-test",
  "wgpu_macros",
@@ -1599,6 +1612,7 @@ dependencies = [
  "futures-signals",
  "glam",
  "quirky",
+ "uuid",
  "wgpu",
  "winit",
 ]
