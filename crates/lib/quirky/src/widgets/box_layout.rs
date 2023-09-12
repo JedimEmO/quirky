@@ -1,6 +1,6 @@
 use crate::drawables::Drawable;
 use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::Widget;
+use crate::widget::{Widget, WidgetBase};
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, SizeConstraint};
 use async_trait::async_trait;
@@ -33,46 +33,34 @@ pub struct BoxLayout {
 
 #[async_trait]
 impl<
-        ChildrenSignal: futures_signals::signal::Signal<Item = Vec<Arc<dyn Widget>>>
-            + Send
-            + Sync
-            + Unpin
-            + 'static,
-        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
-        ChildDirectionSignal: futures_signals::signal::Signal<Item = ChildDirection> + Send + Sync + Unpin + 'static,
-        ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
-        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
-        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
-    > Widget
-    for BoxLayout<
-        ChildrenSignal,
-        ChildrenSignalFn,
-        ChildDirectionSignal,
-        ChildDirectionSignalFn,
-        SizeConstraintSignal,
-        SizeConstraintSignalFn,
-    >
+    ChildrenSignal: futures_signals::signal::Signal<Item=Vec<Arc<dyn Widget>>>
+    + Send
+    + Sync
+    + Unpin
+    + 'static,
+    ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
+    ChildDirectionSignal: futures_signals::signal::Signal<Item=ChildDirection> + Send + Sync + Unpin + 'static,
+    ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
+    SizeConstraintSignal: futures_signals::signal::Signal<Item=SizeConstraint> + Send + Sync + Unpin + 'static,
+    SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
+> Widget
+for BoxLayout<
+    ChildrenSignal,
+    ChildrenSignalFn,
+    ChildDirectionSignal,
+    ChildDirectionSignalFn,
+    SizeConstraintSignal,
+    SizeConstraintSignalFn,
+>
 {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-
     fn paint(&self, _device: &Device) -> Vec<Drawable> {
         let _bb = self.bounding_box.get();
 
         vec![]
     }
 
-    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
+    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
         Box::new((self.size_constraint)())
-    }
-
-    fn set_bounding_box(&self, new_box: LayoutBox) {
-        self.bounding_box.set(new_box);
-    }
-
-    fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox> {
-        self.bounding_box.read_only()
     }
 
     fn get_widget_at(&self, pos: UVec2, path: Vec<Uuid>) -> Option<Vec<Uuid>> {
@@ -109,8 +97,7 @@ impl<
             (self.child_direction)(),
             box_layout_strategy,
             device,
-        )
-        .await;
+        ).await;
     }
 }
 

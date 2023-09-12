@@ -1,6 +1,6 @@
 use glam::UVec2;
 use quirky::widget::Widget;
-use quirky::{MouseEvent, QuirkyApp, WidgetEvent};
+use quirky::{MouseButton, MouseEvent, QuirkyApp, WidgetEvent};
 use std::sync::Arc;
 use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
@@ -105,10 +105,17 @@ impl QuirkyWinitApp {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::MouseInput { state,  .. } => {
-                        if state == ElementState::Pressed {
-                            self.quirky_app
-                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32));
+                    WindowEvent::MouseInput { state, .. } => {
+                        if state == ElementState::Released {
+                            if let Some(p) = self.quirky_app
+                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32)) {
+                                self.quirky_app.dispatch_event_to_widget(
+                                    *p.first().unwrap(),
+                                    WidgetEvent::MouseEvent {
+                                        event: MouseEvent::ButtonDown { button: MouseButton::Left },
+                                    },
+                                );
+                            }
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {

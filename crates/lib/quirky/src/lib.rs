@@ -151,7 +151,7 @@ impl QuirkyApp {
         let mut run_futs = FuturesUnordered::new();
         let requested_drawables = self.requested_drawables.clone();
         let out =
-            futures_signals::signal::from_stream(out).throttle(|| sleep(Duration::from_millis(50)));
+            futures_signals::signal::from_stream(out).throttle(|| sleep(Duration::from_millis(10)));
 
         run_futs.push(drawables_watch_fut.boxed());
         run_futs.push(fut.boxed());
@@ -176,7 +176,7 @@ impl QuirkyApp {
         run_futs.push(
             self.viewport_size
                 .signal()
-                .throttle(|| async_std::task::sleep(Duration::from_millis(20)))
+                .throttle(|| async_std::task::sleep(Duration::from_millis(5)))
                 .for_each(|new_viewport_size| {
                     self.ui_camera
                         .lock()

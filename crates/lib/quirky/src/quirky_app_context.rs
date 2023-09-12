@@ -1,35 +1,37 @@
+use std::collections::HashMap;
 use crate::{EventDispatch, LayoutToken, WidgetEvent};
 use async_std::prelude::Stream;
-use futures::executor::block_on;
+use futures::channel::mpsc::channel;
 use futures::StreamExt;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 pub struct QuirkyAppContext {
     layouts_in_progress: Arc<AtomicI64>,
-    event_stream_tx: async_broadcast::Sender<EventDispatch>,
-    event_stream_rx: async_broadcast::Receiver<EventDispatch>,
+    widget_event_subscriptions: Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>
 }
 
 impl QuirkyAppContext {
     pub fn new() -> Self {
-        let (mut tx, rx) = async_broadcast::broadcast(5000);
-
-        tx.set_overflow(true);
-
         Self {
             layouts_in_progress: Default::default(),
-            event_stream_tx: tx,
-            event_stream_rx: rx,
+            widget_event_subscriptions: Default::default(),
         }
     }
 
     pub fn dispatch_event(&self, target: Uuid, event: WidgetEvent) -> anyhow::Result<()> {
-        block_on(self.event_stream_tx.broadcast(EventDispatch {
-            receiver_id: target,
-            event,
-        }))?;
+        let mut sender_lock = self.widget_event_subscriptions.lock().unwrap();
+
+
+        if let Some(sender) = sender_lock.get_mut(&target) {
+            if sender.is_closed() {
+                sender_lock.remove(&target);
+            } else {
+                sender.try_send(event)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -37,14 +39,15 @@ impl QuirkyAppContext {
         &self,
         event_receiver: Uuid,
     ) -> impl Stream<Item = WidgetEvent> {
-        self.event_stream_rx
-            .clone()
-            .filter(move |e| {
-                let out = e.receiver_id == event_receiver;
+        let (tx,rx) = channel(100);
 
-                async move { out }
-            })
-            .map(|e| e.event)
+        self.widget_event_subscriptions.lock().unwrap().insert(event_receiver, tx);
+
+        rx
+    }
+
+    pub fn unsubscribe_from_widget_events(&self, widget_id: Uuid) {
+
     }
 
     pub fn start_layout(&self) -> LayoutToken {

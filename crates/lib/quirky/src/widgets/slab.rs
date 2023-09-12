@@ -1,11 +1,11 @@
 use crate::drawables::Drawable;
 use crate::primitives::{Quad, Quads};
 use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::Widget;
+use crate::widget::{Event, Widget, WidgetBase, WidgetEventHandler};
 use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
+use async_std::prelude::Stream;
 use async_std::task::sleep;
 use async_trait::async_trait;
-use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, ReadOnlyMutable, Signal};
@@ -13,7 +13,7 @@ use futures_signals::signal::{Mutable, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use glam::{uvec2, UVec2};
 use quirky_macros::widget;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 use wgpu::Device;
@@ -21,21 +21,21 @@ use wgpu::Device;
 #[widget]
 pub struct Slab {
     #[signal]
-    #[default([0.02, 0.02, 0.02, 0.02])]
+    #[default([0.005, 0.005, 0.005, 1.0])]
     color: [f32; 4],
     is_hovered: Mutable<bool>,
+    #[callback]
+    on_event: Event,
+    draw_color: RwLock<[f32; 4]>
 }
 
 #[async_trait]
 impl<
-        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
-        ColorSignalFn: Fn() -> ColorSignal + Send + Sync,
-    > Widget for Slab<ColorSignal, ColorSignalFn>
+        ColorSignal: Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
+        OnEventCallback: Fn(Event) -> () + Send + Sync,
+    > Widget for Slab<ColorSignal, ColorSignalFn, OnEventCallback>
 {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-
     fn paint(&self, device: &Device) -> Vec<Drawable> {
         let bb = self.bounding_box.get();
 
@@ -46,7 +46,7 @@ impl<
         let color = if self.is_hovered.get() {
             [0.009, 0.009, 0.01, 1.0]
         } else {
-            [0.005, 0.005, 0.005, 1.0]
+            *self.draw_color.read().unwrap()
         };
 
         vec![Drawable::Quad(Arc::new(Quads::new(
@@ -60,14 +60,6 @@ impl<
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
         Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
-    }
-
-    fn set_bounding_box(&self, new_box: LayoutBox) {
-        self.bounding_box.set(new_box)
-    }
-
-    fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox> {
-        self.bounding_box.read_only()
     }
 
     fn get_widget_at(&self, pos: UVec2, mut path: Vec<Uuid>) -> Option<Vec<Uuid>> {
@@ -94,7 +86,7 @@ impl<
 
         let redraw_sig = redraw_counter
             .signal()
-            .throttle(|| sleep(Duration::from_millis(20)))
+            .throttle(|| sleep(Duration::from_millis(5)))
             .for_each(clone!(
                 self,
                 clone!(drawable_data, move |_| {
@@ -104,27 +96,38 @@ impl<
             ));
 
         let event_redraw = widget_events
-            .throttle(|| sleep(Duration::from_millis(20)))
+            .throttle(|| sleep(Duration::from_millis(5)))
             .for_each(clone!(
                 redraw_counter,
                 clone!(self, move |e| {
-                    if let Some(e) = e {
-                        match e {
-                            WidgetEvent::MouseEvent { event } => match event {
-                                MouseEvent::Move { pos } => {
-                                    self.is_hovered.set(true);
-                                }
-                                MouseEvent::Leave {} => {
-                                    self.is_hovered.set(false);
-                                }
-                                _ => {}
-                            },
+                    clone!(self, async move {
+                        if let Some(e) = e {
+                            let ec = e.clone();
+                            match e {
+                                WidgetEvent::MouseEvent { event } => match event {
+                                    MouseEvent::Move { pos } => {
+                                        self.is_hovered.set(true);
+                                    }
+                                    MouseEvent::Leave {} => {
+                                        self.is_hovered.set(false);
+                                    }
+                                    MouseEvent::ButtonDown { button } => {
+                                        (self.on_event)(Event {
+                                            widget_event: ec
+                                        });
+                                    }
+                                    _ => {}
+                                },
+                            }
                         }
-                    }
-
-                    async move {}
+                    })
                 })
             ));
+
+        let color_sig = (self.color)().for_each(|c| {
+            *self.draw_color.write().unwrap() = c;
+            async move {}
+        });
 
         let hover_redraw =
             self.is_hovered
@@ -150,6 +153,7 @@ impl<
         futs.push(event_redraw.boxed());
         futs.push(hover_redraw.boxed());
         futs.push(redraw_sig.boxed());
+        futs.push(color_sig.boxed());
 
         loop {
             let _n = futs.select_next_some().await;
