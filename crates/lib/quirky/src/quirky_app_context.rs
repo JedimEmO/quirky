@@ -3,13 +3,14 @@ use crate::{LayoutToken, WidgetEvent};
 use async_std::prelude::Stream;
 use futures::channel::mpsc::channel;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
+use async_std::sync::Mutex;
+use futures::executor::block_on;
 use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
 use uuid::Uuid;
 use wgpu::{Device, Queue};
-use crate::ui_camera::UiCamera2D;
 
 pub struct FontContext {
     pub font_system: Mutex<FontSystem>,
@@ -39,7 +40,7 @@ impl QuirkyAppContext {
     }
 
     pub fn dispatch_event(&self, target: Uuid, event: WidgetEvent) -> anyhow::Result<()> {
-        let mut sender_lock = self.widget_event_subscriptions.lock().unwrap();
+        let mut sender_lock = block_on(self.widget_event_subscriptions.lock());
 
 
         if let Some(sender) = sender_lock.get_mut(&target) {
@@ -59,7 +60,7 @@ impl QuirkyAppContext {
     ) -> impl Stream<Item = WidgetEvent> {
         let (tx,rx) = channel(1000);
 
-        self.widget_event_subscriptions.lock().unwrap().insert(event_receiver, tx);
+        block_on(self.widget_event_subscriptions.lock()).insert(event_receiver, tx);
 
         rx
     }

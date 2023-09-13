@@ -27,7 +27,7 @@ pub trait WidgetEventHandler {
 
 #[async_trait::async_trait]
 pub trait Widget: WidgetBase + Send + Sync {
-    fn paint(&self, device: &Device, queue: &Queue, quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
+    async fn paint(&self, device: &Device, queue: &Queue, quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
         vec![]
     }
 

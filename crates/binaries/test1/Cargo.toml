@@ -16,6 +16,7 @@ glyphon.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
 quirky-winit = { path = "../../lib/quirky-winit" }
+lipsum = "0.9.0"
 tokio.workspace = true
 winit.workspace = true
 wgpu.workspace = true

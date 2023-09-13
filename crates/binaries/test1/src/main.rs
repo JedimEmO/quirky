@@ -1,4 +1,4 @@
-use futures_signals::signal::Mutable;
+use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
@@ -27,7 +27,7 @@ async fn main() {
 }
 
 fn simple_panel_layout() -> Arc<dyn Widget> {
-    let orientation = Mutable::new(ChildDirection::Vertical);
+    let click_count = Mutable::new(0);
 
     let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
         BoxLayoutBuilder::new()
@@ -41,16 +41,13 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                     .children(vec![
                         SlabBuilder::new()
                             .color([0.01, 0.01, 0.1, 1.0])
-                            .on_event(clone!(orientation, move |e| {
+                            .text_signal(clone!(click_count, move || click_count.signal().map(|v| format!("Clicked {} times", v).into())))
+                            .on_event(clone!(click_count, move |e| {
                             match e.widget_event {
                                 WidgetEvent::MouseEvent {event} => {
                                     match event {
                                         MouseEvent::ButtonDown { button: _ } => {
-                                            if orientation.get() == ChildDirection::Horizontal {
-                                                orientation.set(ChildDirection::Vertical);
-                                            } else {
-                                                orientation.set(ChildDirection::Horizontal);
-                                            }
+                                            click_count.replace_with(|v| *v+1);
                                         }
                                         _ => {}
                                     }
@@ -76,6 +73,6 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
 
     BoxLayoutBuilder::new()
         .children_signal(clone!(children, move || children.signal_cloned()))
-        .child_direction_signal(clone!(orientation, move || orientation.signal_cloned()))
+        .child_direction(ChildDirection::Vertical)
         .build()
 }

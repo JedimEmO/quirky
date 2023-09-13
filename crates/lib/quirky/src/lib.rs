@@ -239,7 +239,7 @@ impl QuirkyApp {
             let incoming_drawables = self.requested_drawables.lock().unwrap().take();
 
             if let Some(incoming_drawables) = incoming_drawables {
-                let text_atlas = self.context.font_context.text_atlas.lock().unwrap();
+                let text_atlas = block_on(self.context.font_context.text_atlas.lock());
 
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: None,

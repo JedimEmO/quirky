@@ -53,7 +53,7 @@ for BoxLayout<
     SizeConstraintSignalFn,
 >
 {
-    fn paint(&self, _device: &Device, _queue: &Queue, _quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
+    async fn paint(&self, _device: &Device, _queue: &Queue, _quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
         let _bb = self.bounding_box.get();
 
         vec![]

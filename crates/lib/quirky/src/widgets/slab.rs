@@ -7,16 +7,17 @@ use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
 use async_std::prelude::Stream;
 use async_std::task::sleep;
 use async_trait::async_trait;
+use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use glam::{uvec2, UVec2};
+use glyphon::{Attrs, Family, Metrics, Shaping};
 use quirky_macros::widget;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use glyphon::{Attrs, Family, Metrics, Shaping};
 use uuid::Uuid;
 use wgpu::{Device, MultisampleState, Queue};
 
@@ -25,20 +26,32 @@ pub struct Slab {
     #[signal]
     #[default([0.005, 0.005, 0.005, 1.0])]
     color: [f32; 4],
+    #[signal]
+    #[default("".into())]
+    text: Arc<str>,
     is_hovered: Mutable<bool>,
     #[callback]
     on_event: Event,
     draw_color: RwLock<[f32; 4]>,
+    #[default(RwLock::new("".into()))]
+    text_content: RwLock<Arc<str>>
 }
 
 #[async_trait]
 impl<
-    ColorSignal: Signal<Item=[f32; 4]> + Send + Sync + Unpin + 'static,
-    ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
-    OnEventCallback: Fn(Event) -> () + Send + Sync,
-> Widget for Slab<ColorSignal, ColorSignalFn, OnEventCallback>
+        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
+        TextSignal: futures_signals::signal::Signal<Item = Arc<str>> + Send + Sync + Unpin + 'static,
+        TextSignalFn: Fn() -> TextSignal + Send + Sync + 'static,
+        OnEventCallback: Fn(Event) -> () + Send + Sync,
+    > Widget for Slab<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
 {
-    fn paint(&self, device: &Device, queue: &Queue, quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
+    async fn paint(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        quirky_context: &QuirkyAppContext,
+    ) -> Vec<Drawable> {
         let bb = self.bounding_box.get();
 
         if bb.size.x < 4 || bb.size.y < 4 {
@@ -51,14 +64,25 @@ impl<
             *self.draw_color.read().unwrap()
         };
 
-        let mut font_system = quirky_context.font_context.font_system.lock().unwrap();
-        let mut font_cache = quirky_context.font_context.font_cache.lock().unwrap();
+        let mut font_system = quirky_context.font_context.font_system.lock().await;
+        let mut font_cache = quirky_context.font_context.font_cache.lock().await;
 
         let text = {
-            let mut buffer = glyphon::Buffer::new(&mut font_system, Metrics { font_size: 15.0, line_height: 17.0 });
+            let mut buffer = glyphon::Buffer::new(
+                &mut font_system,
+                Metrics {
+                    font_size: 15.0,
+                    line_height: 17.0,
+                },
+            );
 
             buffer.set_size(&mut font_system, bb.size.x as f32, bb.size.y as f32);
-            buffer.set_text(&mut font_system, "Hello, world!", Attrs::new().family(Family::SansSerif), Shaping::Advanced);
+            buffer.set_text(
+                &mut font_system,
+                &self.text_content.read().unwrap(),
+                Attrs::new().family(Family::SansSerif),
+                Shaping::Advanced,
+            );
             buffer.shape_until_scroll(&mut font_system);
 
             let text_bb = LayoutBox {
@@ -66,7 +90,7 @@ impl<
                 size: bb.size - UVec2::new(20, 20),
             };
 
-            let mut text_atlas = quirky_context.font_context.text_atlas.lock().unwrap();
+            let mut text_atlas = block_on(quirky_context.font_context.text_atlas.lock());
 
             Drawable::Primitive(Arc::new(Text::new(
                 device,
@@ -76,7 +100,8 @@ impl<
                 &mut font_cache,
                 MultisampleState::default(),
                 &buffer,
-                text_bb, quirky_context.viewport_size.get(),
+                text_bb,
+                quirky_context.viewport_size.get(),
             )))
         };
 
@@ -88,11 +113,11 @@ impl<
                 ],
                 device,
             ))),
-            text
+            text,
         ]
     }
 
-    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
+    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
         Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
     }
 
@@ -123,10 +148,16 @@ impl<
             .throttle(|| sleep(Duration::from_millis(5)))
             .for_each(clone!(
                 self,
-                clone!(drawable_data, move |_| {
-                    drawable_data.lock_mut().replace_cloned(self.paint(device, &ctx.queue, &ctx));
-                    async move {}
-                })
+                clone!(
+                    self,
+                    clone!(drawable_data, move |_| clone!(
+                        self,
+                        clone!(drawable_data, async move {
+                            let d = self.paint(device, &ctx.queue, &ctx).await;
+                            drawable_data.lock_mut().replace_cloned(d);
+                        })
+                    ))
+                )
             ));
 
         let event_redraw = widget_events
@@ -161,6 +192,12 @@ impl<
             async move {}
         });
 
+        let str_sig = (self.text)().for_each(|txt| {
+            *self.text_content.write().unwrap() = txt;
+            redraw_counter.set(redraw_counter.get() + 1);
+            async move { }
+        });
+
         let hover_redraw =
             self.is_hovered
                 .signal()
@@ -186,6 +223,7 @@ impl<
         futs.push(hover_redraw.boxed());
         futs.push(redraw_sig.boxed());
         futs.push(color_sig.boxed());
+        futs.push(str_sig.boxed());
 
         loop {
             let _n = futs.select_next_some().await;

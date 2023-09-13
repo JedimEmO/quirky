@@ -42,6 +42,6 @@ impl Text {
 
 impl DrawablePrimitive for Text {
     fn draw<'a>(&'a self, pass: &mut RenderPass<'a>, render_context: &RenderContext<'a>) {
-        self.text_renderer.render(render_context.text_atlas, pass).unwrap();
+        self.text_renderer.render(render_context.text_atlas, pass);
     }
 }

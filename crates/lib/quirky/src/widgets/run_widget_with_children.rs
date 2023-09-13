@@ -44,7 +44,7 @@ pub async fn run_widget_with_children<'a, TExtras: Send>(
                     let _layout_lock = ctx.start_layout();
                     child_run_futs = FuturesUnordered::new();
 
-                    let mut new_drawables = widget.paint(device, &ctx.queue, &ctx);
+                    let mut new_drawables = widget.paint(device, &ctx.queue, &ctx).await;
 
                     layouts.iter().enumerate().for_each(|(idx, l)| {
                         let child = children_data.lock_ref()[idx].clone();
