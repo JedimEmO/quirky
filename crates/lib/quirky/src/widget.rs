@@ -3,16 +3,16 @@ use crate::{LayoutBox, SizeConstraint, WidgetEvent};
 use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 
-use crate::quirky_app_context::QuirkyAppContext;
+use crate::quirky_app_context::{FontContext, QuirkyAppContext};
 use glam::UVec2;
 use std::sync::Arc;
 use futures::Stream;
 use uuid::Uuid;
-use wgpu::Device;
+use wgpu::{Device, Queue};
 
 #[derive(Clone)]
 pub struct Event {
-    pub widget_event: WidgetEvent
+    pub widget_event: WidgetEvent,
 }
 
 pub trait WidgetBase {
@@ -27,11 +27,11 @@ pub trait WidgetEventHandler {
 
 #[async_trait::async_trait]
 pub trait Widget: WidgetBase + Send + Sync {
-    fn paint(&self, _device: &Device) -> Vec<Drawable> {
+    fn paint(&self, device: &Device, queue: &Queue, quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
         vec![]
     }
 
-    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
+    fn size_constraint(&self) -> Box<dyn Signal<Item=SizeConstraint> + Unpin + Send> {
         Box::new(always(SizeConstraint::Unconstrained))
     }
 

@@ -1,5 +1,5 @@
 use crate::drawables::Drawable;
-use crate::quirky_app_context::QuirkyAppContext;
+use crate::quirky_app_context::{FontContext, QuirkyAppContext};
 use crate::widget::{Widget, WidgetBase};
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, SizeConstraint};
@@ -10,7 +10,7 @@ use glam::UVec2;
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::Device;
+use wgpu::{Device, Queue};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ChildDirection {
@@ -53,7 +53,7 @@ for BoxLayout<
     SizeConstraintSignalFn,
 >
 {
-    fn paint(&self, _device: &Device) -> Vec<Drawable> {
+    fn paint(&self, _device: &Device, _queue: &Queue, _quirky_context: &QuirkyAppContext) -> Vec<Drawable> {
         let _bb = self.bounding_box.get();
 
         vec![]

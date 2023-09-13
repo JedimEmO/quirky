@@ -1,7 +1,8 @@
 use glam::UVec2;
 use quirky::widget::Widget;
 use quirky::{MouseButton, MouseEvent, QuirkyApp, WidgetEvent};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use glyphon::{FontSystem, SwashCache};
 use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
     TextureFormat,
@@ -10,6 +11,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+use quirky::quirky_app_context::FontContext;
 
 pub struct QuirkyWinitApp {
     quirky_app: Arc<QuirkyApp>,
@@ -21,7 +23,7 @@ pub struct QuirkyWinitApp {
 }
 
 impl QuirkyWinitApp {
-    pub async fn new(widget: Arc<dyn Widget>) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
+    pub async fn new(widget: Arc<dyn Widget>, font_system: FontSystem, font_cache: SwashCache) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -60,7 +62,7 @@ impl QuirkyWinitApp {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
-        let quirky_app = Arc::new(QuirkyApp::new(device, queue, surface_format, widget));
+        let quirky_app = Arc::new(QuirkyApp::new(device, queue, surface_format, widget, font_system, font_cache));
 
         let quirky_winit_app = Self {
             quirky_app: quirky_app.clone(),
@@ -160,7 +162,7 @@ impl QuirkyWinitApp {
                 view_formats: vec![],
             };
 
-            self.surface.configure(&self.quirky_app.device, &config);
+            self.surface.configure(&self.quirky_app.context.device, &config);
             self.quirky_app
                 .viewport_size
                 .set(UVec2::new(new_size.width, new_size.height));

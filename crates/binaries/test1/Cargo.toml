@@ -12,6 +12,7 @@ async-recursion.workspace = true
 quirky = { path = "../../lib/quirky" }
 bytemuck.workspace = true
 glam.workspace = true
+glyphon.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
 quirky-winit = { path = "../../lib/quirky-winit" }

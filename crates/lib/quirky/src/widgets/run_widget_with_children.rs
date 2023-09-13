@@ -10,7 +10,7 @@ use futures_signals::signal_vec::{MutableVec, SignalVecExt};
 use std::sync::Arc;
 use wgpu::Device;
 
-pub async fn run_widget_with_children<TExtras: Send>(
+pub async fn run_widget_with_children<'a, TExtras: Send>(
     widget: Arc<dyn Widget>,
     children_data: MutableVec<Arc<dyn Widget>>,
     ctx: &QuirkyAppContext,
@@ -44,7 +44,7 @@ pub async fn run_widget_with_children<TExtras: Send>(
                     let _layout_lock = ctx.start_layout();
                     child_run_futs = FuturesUnordered::new();
 
-                    let mut new_drawables = widget.paint(device);
+                    let mut new_drawables = widget.paint(device, &ctx.queue, &ctx);
 
                     layouts.iter().enumerate().for_each(|(idx, l)| {
                         let child = children_data.lock_ref()[idx].clone();

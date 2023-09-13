@@ -1,27 +1,13 @@
-use glam::UVec2;
-use once_cell::sync::OnceCell;
 use std::mem;
 use std::sync::Arc;
+use glam::UVec2;
+use once_cell::sync::OnceCell;
+use wgpu::{BindGroupLayout, Device, include_wgsl, PipelineLayoutDescriptor, RenderPipeline, TextureFormat, VertexState};
 use wgpu::util::DeviceExt;
-use wgpu::{
-    include_wgsl, BindGroupLayout, Device, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
-    VertexState,
-};
 use wgpu_macros::VertexLayout;
+use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 
 static QUAD_PIPELINE: OnceCell<Arc<RenderPipeline>> = OnceCell::new();
-
-pub trait Primitive {
-    fn configure_pipeline(
-        device: &Device,
-        bind_group_layouts: &[&BindGroupLayout],
-        surface_format: TextureFormat,
-    );
-}
-
-pub trait DrawablePrimitive {
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>);
-}
 
 const INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
@@ -118,9 +104,10 @@ impl Quads {
 }
 
 impl DrawablePrimitive for Quads {
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
         if let Some(pipeline) = QUAD_PIPELINE.get() {
             pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, &render_context.camera_bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -143,7 +130,7 @@ impl Primitive for Quads {
             push_constant_ranges: &[],
         });
 
-        let shader = device.create_shader_module(include_wgsl!("quad.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("shaders/quad.wgsl"));
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,

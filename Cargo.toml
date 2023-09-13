@@ -7,13 +7,16 @@ futures = "0.3.28"
 futures-signals = "0.3.32"
 futures-signals-utils = { git = "https://github.com/JedimEmO/dmat.git", rev = "9df70867f058667ff64b7330d1a5449ba19be5c5" }
 glam = "0.24.1"
+#glyphon = { git = "https://github.com/grovesNL/glyphon.git", rev = "20f0f8fa80e0d0df4c63634ce9176fa489546ca9" }
+glyphon = { path = "/home/mmy/repos/oss/glyphon" }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "time"] }
-uuid = "1.4.1"
+uuid = { version = "1.4.1", features = ["v4"] }
 winit = "0.28.6"
-wgpu = { git = "https://github.com/gfx-rs/wgpu.git", tag = "v0.17.0" }
+wgpu = { version = "0.17" }
 wgpu_macros = "0.1.0"
 
 [workspace]
+resolver = "2"
 members = [
     "crates/binaries/test1",
     "crates/lib/quirky",

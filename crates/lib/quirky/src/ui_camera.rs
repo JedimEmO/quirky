@@ -9,16 +9,18 @@ pub struct UiCameraUniform {
 #[derive(Default)]
 pub struct UiCamera2D {
     transform: glam::Mat4,
+    screen_resolution: UVec2
 }
 
 impl UiCamera2D {
     pub fn create_camera_uniform(&self) -> UiCameraUniform {
         UiCameraUniform {
-            transform: self.transform.to_cols_array_2d(),
+            transform: self.transform.to_cols_array_2d()
         }
     }
 
     pub fn resize_viewport(&mut self, size: UVec2) {
+        self.screen_resolution = size;
         let camera_origin_translate = glam::Mat4::from_translation(vec3(-1.0, 1.0, 0.0));
 
         let camera_coordinate_transform = glam::mat4(
@@ -36,6 +38,10 @@ impl UiCamera2D {
         );
 
         self.transform = camera_origin_translate * ndc_scale * camera_coordinate_transform;
+    }
+
+    pub fn viewport_size(&self) -> UVec2 {
+        self.screen_resolution
     }
 
     #[cfg(test)]
