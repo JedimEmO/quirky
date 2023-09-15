@@ -1,6 +1,5 @@
 use crate::drawables::Drawable;
 use crate::primitives::quad::{Quad, Quads};
-use crate::primitives::text::Text;
 use crate::quirky_app_context::{FontContext, QuirkyAppContext};
 use crate::widget::{Event, Widget, WidgetBase, WidgetEventHandler};
 use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
@@ -34,14 +33,14 @@ pub struct Slab {
     on_event: Event,
     draw_color: RwLock<[f32; 4]>,
     #[default(RwLock::new("".into()))]
-    text_content: RwLock<Arc<str>>
+    text_content: RwLock<Arc<str>>,
 }
 
 #[async_trait]
 impl<
-        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignal: Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
         ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
-        TextSignal: futures_signals::signal::Signal<Item = Arc<str>> + Send + Sync + Unpin + 'static,
+        TextSignal: Signal<Item = Arc<str>> + Send + Sync + Unpin + 'static,
         TextSignalFn: Fn() -> TextSignal + Send + Sync + 'static,
         OnEventCallback: Fn(Event) -> () + Send + Sync,
     > Widget for Slab<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
@@ -54,7 +53,7 @@ impl<
     ) -> Vec<Drawable> {
         let bb = self.bounding_box.get();
 
-        if bb.size.x < 4 || bb.size.y < 4 {
+        if bb.size.x < 20 || bb.size.y < 20 {
             return vec![];
         }
 
@@ -64,57 +63,13 @@ impl<
             *self.draw_color.read().unwrap()
         };
 
-        let mut font_system = quirky_context.font_context.font_system.lock().await;
-        let mut font_cache = quirky_context.font_context.font_cache.lock().await;
-
-        let text = {
-            let mut buffer = glyphon::Buffer::new(
-                &mut font_system,
-                Metrics {
-                    font_size: 15.0,
-                    line_height: 17.0,
-                },
-            );
-
-            buffer.set_size(&mut font_system, bb.size.x as f32, bb.size.y as f32);
-            buffer.set_text(
-                &mut font_system,
-                &self.text_content.read().unwrap(),
-                Attrs::new().family(Family::SansSerif),
-                Shaping::Advanced,
-            );
-            buffer.shape_until_scroll(&mut font_system);
-
-            let text_bb = LayoutBox {
-                pos: bb.pos + UVec2::new(10, 10),
-                size: bb.size - UVec2::new(20, 20),
-            };
-
-            let mut text_atlas = block_on(quirky_context.font_context.text_atlas.lock());
-
-            Drawable::Primitive(Arc::new(Text::new(
-                device,
-                queue,
-                &mut font_system,
-                &mut text_atlas,
-                &mut font_cache,
-                MultisampleState::default(),
-                &buffer,
-                text_bb,
-                quirky_context.viewport_size.get(),
-            )))
-        };
-
-        vec![
-            Drawable::Quad(Arc::new(Quads::new(
-                vec![
-                    Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
-                    Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
-                ],
-                device,
-            ))),
-            text,
-        ]
+        vec![Drawable::Quad(Arc::new(Quads::new(
+            vec![
+                Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
+                Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
+            ],
+            device,
+        )))]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -176,7 +131,7 @@ impl<
                                     MouseEvent::Leave {} => {
                                         self.is_hovered.set(false);
                                     }
-                                    MouseEvent::ButtonDown { button } => {
+                                    MouseEvent::ButtonDown { .. } => {
                                         (self.on_event)(Event { widget_event: ec });
                                     }
                                     _ => {}
@@ -195,7 +150,7 @@ impl<
         let str_sig = (self.text)().for_each(|txt| {
             *self.text_content.write().unwrap() = txt;
             redraw_counter.set(redraw_counter.get() + 1);
-            async move { }
+            async move {}
         });
 
         let hover_redraw =

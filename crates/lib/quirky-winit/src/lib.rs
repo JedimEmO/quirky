@@ -1,7 +1,7 @@
 use glam::UVec2;
 use quirky::widget::Widget;
 use quirky::{MouseButton, MouseEvent, QuirkyApp, WidgetEvent};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use glyphon::{FontSystem, SwashCache};
 use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
@@ -11,7 +11,6 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-use quirky::quirky_app_context::FontContext;
 
 pub struct QuirkyWinitApp {
     quirky_app: Arc<QuirkyApp>,
@@ -102,7 +101,7 @@ impl QuirkyWinitApp {
                     self.window.request_redraw();
                 }
                 Event::RedrawRequested(_window_id) => {
-                    self.quirky_app.draw(&self.surface);
+                    let _ = self.quirky_app.draw(&self.surface);
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),

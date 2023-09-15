@@ -67,15 +67,15 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                     .to_case(Case::Pascal)
                     .as_str(),
             )
-                .expect("failed to parse signal name");
+            .expect("failed to parse signal name");
             let signal_type = syn::parse_str::<Type>(
                 format!("futures_signals::signal::Signal<Item={}>", ty).as_str(),
             )
-                .expect("failed to parse signal type");
+            .expect("failed to parse signal type");
             let signal_fn_name = syn::parse_str::<Ident>(
                 format!("{}SignalFn", ident).to_case(Case::Pascal).as_str(),
             )
-                .expect("failed to parse signal fn name");
+            .expect("failed to parse signal fn name");
 
             FnSignalField {
                 field_name: ident,
@@ -97,19 +97,27 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                     .to_case(Case::Pascal)
                     .as_str(),
             )
-                .expect("callback name parse fail");
+            .expect("callback name parse fail");
 
             let msg_type = f.ty.clone();
             let callback_default =
                 syn::parse_str::<Type>(format!("fn({}) -> ()", quote! {#msg_type}).as_str())
-                    .unwrap_or_else(|_| panic!("callback default parse error: fn({}) -> ()",
-                            quote! {#msg_type}));
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "callback default parse error: fn({}) -> ()",
+                            quote! {#msg_type}
+                        )
+                    });
 
-
-            let callback_type =
-                syn::parse_str::<TypeParamBound>(format!("Fn({}) -> ()", quote! {#msg_type}).as_str())
-                    .unwrap_or_else(|_| panic!("callback type parse error: Fn({}) -> ()",
-                            quote! {#msg_type}));
+            let callback_type = syn::parse_str::<TypeParamBound>(
+                format!("Fn({}) -> ()", quote! {#msg_type}).as_str(),
+            )
+            .unwrap_or_else(|_| {
+                panic!(
+                    "callback type parse error: Fn({}) -> ()",
+                    quote! {#msg_type}
+                )
+            });
 
             CallbackField {
                 callback_name,
@@ -130,9 +138,9 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
             .map(|f| f.callback_name.clone())
             .collect::<Vec<_>>(),
     ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     let builder_struct_signal_generics_params_struct = builder_struct_fields.iter().map(|f| {
         let FnSignalField { signal_name, signal_type, signal_fn_name, field_type, .. } = f;
@@ -157,9 +165,9 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         builder_struct_signal_generics_params_struct,
         builder_struct_callback_generics_params_struct,
     ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     let builder_struct_generics_params = builder_struct_fields
         .iter()
@@ -191,9 +199,9 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         builder_struct_generics_params,
         build_struct_callback_generics_params,
     ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     let builder_struct_generics_params_names = builder_struct_fields
         .iter()
@@ -221,9 +229,9 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         builder_struct_generics_params_names,
         builder_struct_callback_generics_params_names,
     ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     let builder_struct_members = builder_struct_fields
         .iter()
@@ -283,8 +291,8 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         builder_struct_members_defaults,
         builder_struct_callback_members_defaults,
     ]
-        .into_iter()
-        .flatten();
+    .into_iter()
+    .flatten();
 
     let real_struct_members = builder_struct_fields
         .iter()
@@ -301,17 +309,18 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .map(|f| {
             let CallbackField {
-                callback_name, callback_type_name, ..
+                callback_name,
+                callback_type_name,
+                ..
             } = f;
             quote! { #callback_name: #callback_type_name }
         })
         .collect::<Vec<_>>();
 
-
-    let real_struct_members = vec![
-        real_struct_members,
-        real_struct_callback_members,
-    ].into_iter().flatten().collect::<Vec<_>>();
+    let real_struct_members = vec![real_struct_members, real_struct_callback_members]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     let real_struct_member_ctors = builder_struct_fields
         .iter()
@@ -324,16 +333,22 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let real_struct_member_callback_ctors = builder_struct_callback_fields
         .iter()
         .map(|f| {
-            let CallbackField { callback_name, callback_type_name: _, callback_type: _, callback_default: _ } = f;
+            let CallbackField {
+                callback_name,
+                callback_type_name: _,
+                callback_type: _,
+                callback_default: _,
+            } = f;
 
             quote! { #callback_name: self.#callback_name.expect("missing callback")}
         })
         .collect::<Vec<_>>();
 
-    let real_struct_member_ctors = vec![
-        real_struct_member_ctors,
-        real_struct_member_callback_ctors,
-    ].into_iter().flatten().collect::<Vec<_>>();
+    let real_struct_member_ctors =
+        vec![real_struct_member_ctors, real_struct_member_callback_ctors]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
     let builder_field_signal_setters = builder_struct_fields.iter().map(|f| {
         let FnSignalField { field_name, field_type, signal_name,  .. } = f;
@@ -514,7 +529,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                 self.bounding_box.set(new_box);
             }
 
-            fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox> {
+            fn bounding_box(&self) -> futures_signals::signal::ReadOnlyMutable<LayoutBox> {
                 self.bounding_box.read_only()
             }
         }

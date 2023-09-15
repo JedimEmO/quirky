@@ -1,13 +1,15 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
+use glyphon::{FontSystem, SwashCache};
+use lipsum::{lipsum_title, lipsum_words};
+use quirky::primitives::quad::Quads;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky::widgets::slab::SlabBuilder;
+use quirky::widgets::text_layout::{TextLayout, TextLayoutBuilder};
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
 use quirky_winit::QuirkyWinitApp;
-use std::sync::{Arc};
-use glyphon::{FontSystem, SwashCache};
-use quirky::primitives::quad::Quads;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -16,7 +18,9 @@ async fn main() {
     let font_system = FontSystem::new();
     let font_cache = SwashCache::new();
 
-    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout, font_system, font_cache).await.unwrap();
+    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout, font_system, font_cache)
+        .await
+        .unwrap();
 
     quirky_app.configure_primitive::<Quads>();
 
@@ -41,21 +45,24 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                     .children(vec![
                         SlabBuilder::new()
                             .color([0.01, 0.01, 0.1, 1.0])
-                            .text_signal(clone!(click_count, move || click_count.signal().map(|v| format!("Clicked {} times", v).into())))
+                            .text_signal(clone!(click_count, move || click_count
+                                .signal()
+                                .map(|v| format!("Clicked {} times", v).into())))
                             .on_event(clone!(click_count, move |e| {
-                            match e.widget_event {
-                                WidgetEvent::MouseEvent {event} => {
-                                    match event {
+                                match e.widget_event {
+                                    WidgetEvent::MouseEvent { event } => match event {
                                         MouseEvent::ButtonDown { button: _ } => {
-                                            click_count.replace_with(|v| *v+1);
+                                            click_count.replace_with(|v| *v + 1);
                                         }
                                         _ => {}
-                                    }
+                                    },
                                 }
-                            }
-                        })).build(),
+                            }))
+                            .build(),
                         SlabBuilder::new().build(),
-                        SlabBuilder::new().build(),
+                        TextLayoutBuilder::new()
+                            .text(lipsum_words(4).into())
+                            .build(),
                         SlabBuilder::new().build(),
                     ])
                     .size_constraint(SizeConstraint::MaxWidth(300))
