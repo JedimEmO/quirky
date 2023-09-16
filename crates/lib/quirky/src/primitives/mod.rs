@@ -9,7 +9,7 @@ use wgpu::{BindGroup, BindGroupLayout, Device, TextureFormat};
 pub struct RenderContext<'a> {
     pub text_atlas: &'a TextAtlas,
     pub camera_bind_group: &'a BindGroup,
-    pub screen_resolution: UVec2
+    pub screen_resolution: UVec2,
 }
 
 pub trait Primitive {
@@ -20,6 +20,6 @@ pub trait Primitive {
     );
 }
 
-pub trait DrawablePrimitive {
+pub trait DrawablePrimitive: Send + Sync {
     fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, ctx: &RenderContext<'a>);
 }

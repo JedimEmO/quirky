@@ -60,16 +60,15 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                             }))
                             .build(),
                         SlabBuilder::new().build(),
-                        TextLayoutBuilder::new()
-                            .text(lipsum_words(4).into())
-                            .build(),
                         SlabBuilder::new().build(),
                     ])
                     .size_constraint(SizeConstraint::MaxWidth(300))
                     .build(),
                 BoxLayoutBuilder::new()
                     .child_direction(ChildDirection::Vertical)
-                    .children(vec![SlabBuilder::new().build()])
+                    .children(vec![TextLayoutBuilder::new()
+                        .text(lipsum_words(400).into())
+                        .build()])
                     .size_constraint(SizeConstraint::Unconstrained)
                     .build(),
             ])

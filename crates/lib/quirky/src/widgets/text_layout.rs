@@ -1,12 +1,12 @@
-use crate::drawables::Drawable;
+use crate::primitives::DrawablePrimitive;
 use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::WidgetBase;
 use crate::widget::{Event, Widget};
+use crate::widget::{PrepareContext, WidgetBase};
 use crate::SizeConstraint;
 use crate::{clone, LayoutBox};
 use async_std::task::sleep;
 use async_trait::async_trait;
-use futures::lock::Mutex;
+use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
@@ -18,7 +18,7 @@ use glyphon::{
 use quirky_macros::widget;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 use wgpu::{Device, MultisampleState, Queue};
@@ -36,7 +36,7 @@ pub struct TextLayout {
     draw_color: RwLock<[f32; 4]>,
     #[default(RwLock::new("".into()))]
     text_content: RwLock<Arc<str>>,
-    text_buffer: Mutex<Option<Buffer>>,
+    text_buffer: futures::lock::Mutex<Option<Buffer>>,
 }
 
 #[async_trait]
@@ -48,59 +48,77 @@ impl<
         OnEventCallback: Fn(Event) -> () + Send + Sync,
     > Widget for TextLayout<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
 {
-    async fn paint(
+    fn paint(
         &self,
-        device: &Device,
-        queue: &Queue,
-        quirky_context: &QuirkyAppContext,
-    ) -> Vec<Drawable> {
+        ctx: &QuirkyAppContext,
+        paint_ctx: &mut PrepareContext,
+    ) -> Vec<Box<dyn DrawablePrimitive>> {
         let bb = self.bounding_box.get();
-        let mut buffer_lock = self.text_buffer.lock().await;
-        let mut font_system = quirky_context.font_context.font_system.lock().await;
-        let mut font_cache = quirky_context.font_context.font_cache.lock().await;
-        let mut text_atlas = quirky_context.font_context.text_atlas.lock().await;
+        let mut buffer_lock = block_on(self.text_buffer.lock());
 
-        let buffer = if let Some(buf) = buffer_lock.take() {
+        let buffer = if let Some(mut buf) = buffer_lock.take() {
+            buf.set_size(
+                &mut paint_ctx.font_system,
+                bb.size.x as f32,
+                bb.size.y as f32,
+            );
+
+            buf.set_text(
+                &mut paint_ctx.font_system,
+                &self.text_content.read().unwrap(),
+                Attrs::new().family(Family::SansSerif),
+                Shaping::Advanced,
+            );
+            buf.shape_until_scroll(&mut paint_ctx.font_system);
             buf
         } else {
             let mut buffer = Buffer::new(
-                &mut font_system,
+                paint_ctx.font_system,
                 Metrics {
                     font_size: 15.0,
                     line_height: 17.0,
                 },
             );
 
-            buffer.set_size(&mut font_system, bb.size.x as f32, bb.size.y as f32);
+            buffer.set_size(
+                &mut paint_ctx.font_system,
+                bb.size.x as f32,
+                bb.size.y as f32,
+            );
 
             buffer.set_text(
-                &mut font_system,
+                &mut paint_ctx.font_system,
                 &self.text_content.read().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
 
-            buffer.shape_until_scroll(&mut font_system);
+            buffer.shape_until_scroll(&mut paint_ctx.font_system);
 
             buffer
         };
 
-        let mut renderer =
-            TextRenderer::new(text_atlas.borrow_mut(), device, Default::default(), None);
-        let screen_resolution = quirky_context.viewport_size.get();
+        let mut renderer = TextRenderer::new(
+            paint_ctx.text_atlas.borrow_mut(),
+            &ctx.device,
+            Default::default(),
+            None,
+        );
+
+        let screen_resolution = ctx.viewport_size.get();
         let buffer = buffer_lock.insert(buffer);
 
         let _ = renderer.prepare(
-            &quirky_context.device,
-            &quirky_context.queue,
-            font_system.borrow_mut(),
-            text_atlas.borrow_mut(),
+            &ctx.device,
+            &ctx.queue,
+            paint_ctx.font_system.borrow_mut(),
+            paint_ctx.text_atlas.borrow_mut(),
             Resolution {
                 width: screen_resolution.x,
                 height: screen_resolution.y,
             },
             [TextArea {
-                buffer: buffer,
+                buffer,
                 left: bb.pos.x as f32,
                 top: bb.pos.y as f32,
                 scale: 1.0,
@@ -112,10 +130,10 @@ impl<
                 },
                 default_color: Color::rgb(80, 80, 50),
             }],
-            font_cache.borrow_mut(),
+            paint_ctx.font_cache.borrow_mut(),
         );
 
-        vec![Drawable::Primitive(Arc::new(renderer))]
+        vec![Box::new(renderer)]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -126,31 +144,19 @@ impl<
         None
     }
 
-    async fn run(
-        self: Arc<Self>,
-        ctx: &QuirkyAppContext,
-        drawable_data: MutableVec<Drawable>,
-        device: &Device,
-    ) {
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device) {
         let mut futs = FuturesUnordered::new();
         let redraw_counter = Mutable::new(0);
 
         let redraw_sig = redraw_counter
             .signal()
             .throttle(|| sleep(Duration::from_millis(5)))
-            .for_each(clone!(
-                self,
-                clone!(
-                    self,
-                    clone!(drawable_data, move |_| clone!(
-                        self,
-                        clone!(drawable_data, async move {
-                            let d = self.paint(device, &ctx.queue, &ctx).await;
-                            drawable_data.lock_mut().replace_cloned(d);
-                        })
-                    ))
-                )
-            ));
+            .for_each(clone!(self, move |_| {
+                self.set_dirty();
+                async move {
+                    ctx.signal_redraw().await;
+                }
+            }));
 
         let color_sig = (self.color)().for_each(clone!(
             self,
@@ -170,18 +176,6 @@ impl<
                         clone!(redraw_counter, async move {
                             *self.text_content.write().unwrap() = txt.clone();
 
-                            let mut buf = self.text_buffer.lock().await;
-
-                            if let Some(buf) = buf.borrow_mut().as_mut() {
-                                let mut font_system = ctx.font_context.font_system.lock().await;
-                                buf.set_text(
-                                    &mut font_system,
-                                    txt.as_ref(),
-                                    Attrs::new().family(Family::SansSerif),
-                                    Shaping::Advanced,
-                                );
-                            }
-
                             redraw_counter.set(redraw_counter.get() + 1);
                         })
                     )
@@ -199,12 +193,6 @@ impl<
                     clone!(
                         self,
                         clone!(redraw_counter, async move {
-                            let mut buf = self.text_buffer.lock().await;
-
-                            if let Some(buf) = buf.borrow_mut().as_mut() {
-                                let mut font_system = ctx.font_context.font_system.lock().await;
-                                buf.set_size(&mut font_system, bb.size.x as f32, bb.size.y as f32);
-                            }
                             redraw_counter.set(redraw_counter.get() + 1);
                         })
                     )

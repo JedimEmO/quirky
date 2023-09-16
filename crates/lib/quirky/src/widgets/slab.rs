@@ -1,7 +1,7 @@
-use crate::drawables::Drawable;
 use crate::primitives::quad::{Quad, Quads};
+use crate::primitives::DrawablePrimitive;
 use crate::quirky_app_context::{FontContext, QuirkyAppContext};
-use crate::widget::{Event, Widget, WidgetBase, WidgetEventHandler};
+use crate::widget::{Event, PrepareContext, Widget, WidgetBase, WidgetEventHandler};
 use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
 use async_std::prelude::Stream;
 use async_std::task::sleep;
@@ -13,9 +13,8 @@ use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use glam::{uvec2, UVec2};
-use glyphon::{Attrs, Family, Metrics, Shaping};
 use quirky_macros::widget;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 use wgpu::{Device, MultisampleState, Queue};
@@ -45,12 +44,11 @@ impl<
         OnEventCallback: Fn(Event) -> () + Send + Sync,
     > Widget for Slab<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
 {
-    async fn paint(
+    fn paint(
         &self,
-        device: &Device,
-        queue: &Queue,
-        quirky_context: &QuirkyAppContext,
-    ) -> Vec<Drawable> {
+        ctx: &QuirkyAppContext,
+        paint_ctx: &mut PrepareContext,
+    ) -> Vec<Box<dyn DrawablePrimitive>> {
         let bb = self.bounding_box.get();
 
         if bb.size.x < 20 || bb.size.y < 20 {
@@ -63,13 +61,15 @@ impl<
             *self.draw_color.read().unwrap()
         };
 
-        vec![Drawable::Quad(Arc::new(Quads::new(
+        let quads = Box::new(Quads::new(
             vec![
                 Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
                 Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
             ],
-            device,
-        )))]
+            &ctx.device,
+        ));
+
+        vec![quads]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -88,12 +88,7 @@ impl<
         }
     }
 
-    async fn run(
-        self: Arc<Self>,
-        ctx: &QuirkyAppContext,
-        drawable_data: MutableVec<Drawable>,
-        device: &Device,
-    ) {
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device) {
         let widget_events = ctx.subscribe_to_widget_events(self.id());
         let widget_events = futures_signals::signal::from_stream(widget_events);
         let redraw_counter = Mutable::new(0);
@@ -101,19 +96,12 @@ impl<
         let redraw_sig = redraw_counter
             .signal()
             .throttle(|| sleep(Duration::from_millis(5)))
-            .for_each(clone!(
-                self,
-                clone!(
-                    self,
-                    clone!(drawable_data, move |_| clone!(
-                        self,
-                        clone!(drawable_data, async move {
-                            let d = self.paint(device, &ctx.queue, &ctx).await;
-                            drawable_data.lock_mut().replace_cloned(d);
-                        })
-                    ))
-                )
-            ));
+            .for_each(clone!(self, move |_| {
+                self.set_dirty();
+                async move {
+                    ctx.signal_redraw().await;
+                }
+            }));
 
         let event_redraw = widget_events
             .throttle(|| sleep(Duration::from_millis(5)))

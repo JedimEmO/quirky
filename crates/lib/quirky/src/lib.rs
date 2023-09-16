@@ -1,19 +1,15 @@
-mod drawable_tree_watch;
-pub mod drawables;
+pub mod primitives;
 pub mod quirky_app_context;
 mod ui_camera;
 pub mod view_tree;
 pub mod widget;
 pub mod widgets;
-pub mod primitives;
 
+use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
+use crate::quirky_app_context::FontContext;
+use crate::ui_camera::UiCamera2D;
+use crate::widget::PrepareContext;
 use async_std::task::{block_on, sleep};
-use std::fmt::Debug;
-use std::iter;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::{select, Stream};
@@ -22,13 +18,15 @@ use futures_signals::map_ref;
 use futures_signals::signal::{Mutable, Signal, SignalExt};
 use futures_signals::signal_vec::MutableVec;
 use futures_signals::signal_vec::SignalVecExt;
-
-use crate::drawable_tree_watch::drawable_tree_watch;
-use crate::drawables::Drawable;
-use crate::ui_camera::UiCamera2D;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
 use quirky_app_context::QuirkyAppContext;
+use std::borrow::BorrowMut;
+use std::fmt::Debug;
+use std::iter;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -37,8 +35,6 @@ use wgpu::{
     ShaderStages, Surface, TextureFormat,
 };
 use widget::Widget;
-use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
-use crate::quirky_app_context::FontContext;
 
 #[macro_export]
 macro_rules! clone {
@@ -104,7 +100,8 @@ pub struct QuirkyApp {
     camera_uniform_buffer: Buffer,
     camera_bind_group_layout: BindGroupLayout,
     camera_bind_group: BindGroup,
-    requested_drawables: Arc<Mutex<Option<Vec<Drawable>>>>,
+    signal_dirty_rx: async_std::channel::Receiver<()>,
+    drawables_cache: Mutex<Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>>,
 }
 
 impl QuirkyApp {
@@ -122,6 +119,7 @@ impl QuirkyApp {
             Self::setup(&device, &ui_camera);
 
         let text_atlas = TextAtlas::new(&device, &queue, surface_format);
+        let (tx, rx) = async_std::channel::unbounded();
 
         let context = QuirkyAppContext::new(
             device,
@@ -132,6 +130,7 @@ impl QuirkyApp {
                 text_atlas: text_atlas.into(),
             },
             viewport_size.read_only(),
+            tx,
         );
 
         Self {
@@ -143,7 +142,8 @@ impl QuirkyApp {
             camera_uniform_buffer: camera_buffer,
             camera_bind_group_layout,
             camera_bind_group,
-            requested_drawables: Arc::new(Mutex::new(None)),
+            signal_dirty_rx: rx,
+            drawables_cache: Default::default(),
         }
     }
 
@@ -157,33 +157,20 @@ impl QuirkyApp {
 
     pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {
         let widgets = MutableVec::new_with_values(vec![self.widget.clone()]);
-        let (drawables, fut) = run_widgets(&self.context, widgets, &*self.context.device);
-        let (out, drawables_watch_fut) = drawable_tree_watch(drawables.clone());
+        let fut = run_widgets(&self.context, widgets, &*self.context.device);
 
         let mut run_futs = FuturesUnordered::new();
-        let requested_drawables = self.requested_drawables.clone();
-        let out =
-            futures_signals::signal::from_stream(out).throttle(|| sleep(Duration::from_millis(10)));
 
-        run_futs.push(drawables_watch_fut.boxed());
         run_futs.push(fut.boxed());
-        run_futs.push(clone!(
-            requested_drawables,
-            clone!(
-                drawables,
-                out.for_each(move |_| {
-                    let _ = requested_drawables
-                        .lock()
-                        .unwrap()
-                        .insert(drawables.lock_ref().to_vec());
-
+        run_futs.push(
+            futures_signals::signal::from_stream(self.signal_dirty_rx.clone())
+                .throttle(|| sleep(Duration::from_millis(16)))
+                .for_each(move |_| {
                     on_new_drawables();
-
                     async move {}
                 })
-                .boxed()
-            )
-        ));
+                .boxed(),
+        );
 
         run_futs.push(
             self.viewport_size
@@ -228,19 +215,33 @@ impl QuirkyApp {
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut encoder = self
-                .context.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("hi there"),
-                });
+            let mut encoder =
+                self.context
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("hi there"),
+                    });
 
-            let mut drawables: Vec<Arc<dyn DrawablePrimitive + Send + Sync>> = vec![];
+            let mut drawables_cache = self.drawables_cache.lock().unwrap();
 
-            let incoming_drawables = self.requested_drawables.lock().unwrap().take();
+            let mut font_system = block_on(self.context.font_context.font_system.lock());
+            let mut font_cache = block_on(self.context.font_context.font_cache.lock());
+            let mut text_atlas = block_on(self.context.font_context.text_atlas.lock());
 
-            if let Some(incoming_drawables) = incoming_drawables {
-                let text_atlas = block_on(self.context.font_context.text_atlas.lock());
+            let mut paint_context = PrepareContext {
+                font_system: font_system.borrow_mut(),
+                text_atlas: text_atlas.borrow_mut(),
+                font_cache: font_cache.borrow_mut(),
+            };
 
+            let mut drawables = next_drawable_list(
+                &self.widget,
+                &mut drawables_cache,
+                &self.context,
+                &mut paint_context,
+            );
+
+            {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: None,
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -259,18 +260,21 @@ impl QuirkyApp {
                     depth_stencil_attachment: None,
                 });
 
-                // pass.set_bind_group(0, &self.camera_bind_group, &[]);
-                drawables.clear();
-                drawables.append(&mut render_drawables(incoming_drawables));
+                let render_context = RenderContext {
+                    text_atlas: &*text_atlas,
+                    camera_bind_group: &self.camera_bind_group,
+                    screen_resolution,
+                };
 
-                {
-                    let render_context = RenderContext { text_atlas: &*text_atlas, camera_bind_group: &self.camera_bind_group, screen_resolution };
-
-                    drawables.iter().for_each(|d| {
-                        d.draw(&mut pass, &render_context);
+                drawables.iter().for_each(|d| {
+                    d.1.iter().for_each(|d2| {
+                        d2.draw(&mut pass, &render_context);
                     });
-                }
+                });
             }
+
+            drawables_cache.clear();
+            drawables_cache.append(&mut drawables);
 
             self.context.queue.submit(iter::once(encoder.finish()));
 
@@ -317,58 +321,23 @@ impl QuirkyApp {
     }
 }
 
-fn render_drawables(drawables: Vec<Drawable>) -> Vec<Arc<dyn DrawablePrimitive + Send + Sync>> {
-    drawables
-        .into_iter()
-        .flat_map(|drawable| match drawable {
-            Drawable::Quad(q) => vec![q as Arc<dyn DrawablePrimitive + Send + Sync>],
-            Drawable::SubTree {
-                children,
-                size: _,
-                transform: _,
-            } => render_drawables(children.lock_ref().to_vec()),
-            Drawable::ChildList(children) => render_drawables(children),
-            Drawable::Primitive(primitive) => { vec![primitive] }
-        })
-        .collect()
-}
-
 pub fn run_widgets<'a, 'b: 'a>(
     ctx: &'b QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
     device: &'a Device,
-) -> (MutableVec<Drawable>, impl Future<Output=()> + 'a) {
-    let data = MutableVec::new();
-
-    let runner_fut = clone!(data, async move {
+) -> impl Future<Output = ()> + 'a {
+    let runner_fut = async move {
         let next_widgets_stream = widgets.signal_vec_cloned().to_signal_cloned().to_stream();
 
-        let mut next_widgets_stream = next_widgets_stream.map(clone!(data, move |v| {
+        let mut next_widgets_stream = next_widgets_stream.map(move |v| {
             let futures = FuturesUnordered::new();
 
             for (idx, widget) in v.into_iter().enumerate() {
-                let bb = widget.bounding_box().get();
-                let subtree_data = MutableVec::new();
-
-                futures.push(widget.run(ctx, subtree_data.clone(), device));
-
-                let mut d = data.lock_mut();
-
-                let drawable = Drawable::SubTree {
-                    children: subtree_data,
-                    transform: bb.pos,
-                    size: bb.size,
-                };
-
-                if idx < d.len() {
-                    d.set_cloned(idx, drawable);
-                } else {
-                    d.push_cloned(drawable)
-                }
+                futures.push(widget.run(ctx, device));
             }
 
             futures
-        }));
+        });
 
         let mut updates = FuturesUnordered::new();
 
@@ -386,9 +355,45 @@ pub fn run_widgets<'a, 'b: 'a>(
                 }
             }
         }
-    });
+    };
 
-    (data, runner_fut)
+    runner_fut
+}
+
+fn next_drawable_list(
+    widget: &Arc<dyn Widget>,
+    old_list: &mut Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>,
+    ctx: &QuirkyAppContext,
+    paint_ctx: &mut PrepareContext,
+) -> Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)> {
+    let widget_id = widget.id();
+    let widget_primitives = if widget.dirty().get() {
+        widget.clear_dirty();
+        vec![(widget_id, widget.paint(ctx, paint_ctx))]
+    } else {
+        if let Some(old_index) = old_list.iter().position(|v| v.0 == widget_id) {
+            vec![old_list.remove(old_index)]
+        } else {
+            vec![]
+        }
+    };
+
+    let child_primitives = widget
+        .children()
+        .map(|children| {
+            children
+                .iter()
+                .map(|child| next_drawable_list(child, old_list, ctx, paint_ctx))
+                .flatten()
+                .collect::<Vec<_>>()
+        })
+        .or(Some(vec![]))
+        .unwrap();
+
+    vec![widget_primitives, child_primitives]
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -415,11 +420,11 @@ impl LayoutBox {
 }
 
 pub fn layout<TExtras: Send>(
-    container_box: impl Signal<Item=LayoutBox> + Send,
-    constraints: impl Signal<Item=Vec<Box<dyn Signal<Item=SizeConstraint> + Unpin + Send>>> + Send,
-    extras_signal: impl Signal<Item=TExtras> + Send,
+    container_box: impl Signal<Item = LayoutBox> + Send,
+    constraints: impl Signal<Item = Vec<Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>>> + Send,
+    extras_signal: impl Signal<Item = TExtras> + Send,
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
-) -> impl Signal<Item=Vec<LayoutBox>> + Send {
+) -> impl Signal<Item = Vec<LayoutBox>> + Send {
     let constraints = constraints.to_signal_vec();
     let constraints = constraints.map_signal(|x| x).to_signal_cloned();
 

@@ -1,21 +1,22 @@
-use std::collections::HashMap;
 use crate::{LayoutToken, WidgetEvent};
+use async_std::channel::Sender;
 use async_std::prelude::Stream;
-use futures::channel::mpsc::channel;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc};
 use async_std::sync::Mutex;
+use futures::channel::mpsc::channel;
 use futures::executor::block_on;
 use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 use uuid::Uuid;
 use wgpu::{Device, Queue};
 
 pub struct FontContext {
     pub font_system: Mutex<FontSystem>,
     pub font_cache: Mutex<SwashCache>,
-    pub text_atlas: Mutex<TextAtlas>
+    pub text_atlas: Mutex<TextAtlas>,
 }
 
 pub struct QuirkyAppContext {
@@ -23,12 +24,19 @@ pub struct QuirkyAppContext {
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub viewport_size: ReadOnlyMutable<UVec2>,
+    signal_dirty: Sender<()>,
     layouts_in_progress: Arc<AtomicI64>,
-    widget_event_subscriptions: Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>
+    widget_event_subscriptions: Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>,
 }
 
 impl QuirkyAppContext {
-    pub fn new(device: Device, queue: Queue, font_context: FontContext, viewport_size: ReadOnlyMutable<UVec2>) -> Self {
+    pub fn new(
+        device: Device,
+        queue: Queue,
+        font_context: FontContext,
+        viewport_size: ReadOnlyMutable<UVec2>,
+        signal_dirty: Sender<()>,
+    ) -> Self {
         Self {
             device: device.into(),
             queue: queue.into(),
@@ -36,12 +44,16 @@ impl QuirkyAppContext {
             layouts_in_progress: Default::default(),
             widget_event_subscriptions: Default::default(),
             viewport_size,
+            signal_dirty,
         }
+    }
+
+    pub async fn signal_redraw(&self) {
+        self.signal_dirty.send(()).await.unwrap();
     }
 
     pub fn dispatch_event(&self, target: Uuid, event: WidgetEvent) -> anyhow::Result<()> {
         let mut sender_lock = block_on(self.widget_event_subscriptions.lock());
-
 
         if let Some(sender) = sender_lock.get_mut(&target) {
             if sender.is_closed() {
@@ -58,16 +70,14 @@ impl QuirkyAppContext {
         &self,
         event_receiver: Uuid,
     ) -> impl Stream<Item = WidgetEvent> {
-        let (tx,rx) = channel(1000);
+        let (tx, rx) = channel(1000);
 
         block_on(self.widget_event_subscriptions.lock()).insert(event_receiver, tx);
 
         rx
     }
 
-    pub fn unsubscribe_from_widget_events(&self, widget_id: Uuid) {
-
-    }
+    pub fn unsubscribe_from_widget_events(&self, widget_id: Uuid) {}
 
     pub fn start_layout(&self) -> LayoutToken {
         LayoutToken::new(self.layouts_in_progress.clone())
@@ -77,4 +87,3 @@ impl QuirkyAppContext {
         self.layouts_in_progress.load(Ordering::Relaxed)
     }
 }
-

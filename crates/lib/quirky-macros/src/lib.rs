@@ -507,6 +507,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                 Arc::new(#struct_name {
                     id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
+                    dirty: Default::default(),
                     #(#real_struct_member_ctors),*,
                     #(#struct_fields_init),*
                 })
@@ -516,6 +517,7 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         pub struct #struct_name<#(#builder_struct_generics_params),*> {
             id: uuid::Uuid,
             bounding_box: futures_signals::signal::Mutable<LayoutBox>,
+            dirty: futures_signals::signal::Mutable<bool>,
             #(#real_struct_members),*,
             #(#struct_fields_decl),*
         }
@@ -531,6 +533,18 @@ pub fn widget(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             fn bounding_box(&self) -> futures_signals::signal::ReadOnlyMutable<LayoutBox> {
                 self.bounding_box.read_only()
+            }
+
+            fn dirty(&self)  -> futures_signals::signal::ReadOnlyMutable<bool> {
+                self.dirty.read_only()
+            }
+
+            fn set_dirty(&self) -> () {
+                self.dirty.set(true);
+            }
+
+            fn clear_dirty(&self) -> () {
+                self.dirty.set(false);
             }
         }
     }.into()

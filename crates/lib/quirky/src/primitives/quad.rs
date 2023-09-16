@@ -1,11 +1,14 @@
-use std::mem;
-use std::sync::Arc;
+use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 use glam::UVec2;
 use once_cell::sync::OnceCell;
-use wgpu::{BindGroupLayout, Device, include_wgsl, PipelineLayoutDescriptor, RenderPipeline, TextureFormat, VertexState};
+use std::mem;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
+use wgpu::{
+    include_wgsl, BindGroupLayout, Device, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
+    VertexState,
+};
 use wgpu_macros::VertexLayout;
-use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 
 static QUAD_PIPELINE: OnceCell<Arc<RenderPipeline>> = OnceCell::new();
 
@@ -88,7 +91,7 @@ impl Quads {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let mut instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad index buffer"),
             contents: bytemuck::cast_slice(&geometry),
             usage: wgpu::BufferUsages::VERTEX,

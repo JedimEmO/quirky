@@ -1,4 +1,3 @@
-use crate::drawables::Drawable;
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::Widget;
 use crate::{layout, LayoutBox, SizeConstraint};
@@ -14,7 +13,6 @@ pub async fn run_widget_with_children<'a, TExtras: Send>(
     widget: Arc<dyn Widget>,
     children_data: MutableVec<Arc<dyn Widget>>,
     ctx: &QuirkyAppContext,
-    drawable_data: MutableVec<Drawable>,
     widget_children: impl Signal<Item = Vec<Arc<dyn Widget>>> + Unpin,
     extras_signal: impl Signal<Item = TExtras> + Send,
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
@@ -44,18 +42,12 @@ pub async fn run_widget_with_children<'a, TExtras: Send>(
                     let _layout_lock = ctx.start_layout();
                     child_run_futs = FuturesUnordered::new();
 
-                    let mut new_drawables = widget.paint(device, &ctx.queue, &ctx).await;
-
                     layouts.iter().enumerate().for_each(|(idx, l)| {
                         let child = children_data.lock_ref()[idx].clone();
 
                         child.set_bounding_box(*l);
-                        let child_subtree = MutableVec::new();
-                        new_drawables.push(Drawable::SubTree {children: child_subtree.clone(), transform: l.pos, size: l.size });
-                        child_run_futs.push(child.run(ctx, child_subtree, device));
+                        child_run_futs.push(child.run(ctx, device));
                     });
-
-                    drawable_data.lock_mut().replace_cloned(new_drawables);
                 }
             }
 
