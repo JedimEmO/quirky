@@ -79,6 +79,7 @@ pub enum MouseEvent {
     Move { pos: UVec2 },
     ButtonDown { button: MouseButton },
     ButtonUp { button: MouseButton },
+    Drag { from: UVec2, to: UVec2 },
 }
 
 #[derive(Clone)]
@@ -229,10 +230,19 @@ impl QuirkyApp {
             let mut font_cache = block_on(self.context.font_context.font_cache.lock());
             let mut text_atlas = block_on(self.context.font_context.text_atlas.lock());
 
+            let mut pipeline_cache = Default::default();
+            let mut bind_group_cache = Default::default();
+
             let mut paint_context = PrepareContext {
                 font_system: font_system.borrow_mut(),
                 text_atlas: text_atlas.borrow_mut(),
                 font_cache: font_cache.borrow_mut(),
+                device: &self.context.device,
+                queue: &self.context.queue,
+                surface_format: self.surface_format,
+                pipeline_cache: &mut pipeline_cache,
+                bind_group_cache: &mut bind_group_cache,
+                camera_bind_group_layout: &self.camera_bind_group_layout,
             };
 
             let mut drawables = next_drawable_list(
@@ -244,7 +254,7 @@ impl QuirkyApp {
 
             for drawable in drawables.iter_mut() {
                 for d in drawable.1.iter_mut() {
-                    d.prepare(&paint_context);
+                    d.prepare(&mut paint_context);
                 }
             }
 
@@ -271,6 +281,8 @@ impl QuirkyApp {
                     text_atlas: &*text_atlas,
                     camera_bind_group: &self.camera_bind_group,
                     screen_resolution,
+                    pipeline_cache: &pipeline_cache,
+                    bind_group_cache: &bind_group_cache,
                 };
 
                 drawables.iter().for_each(|d| {

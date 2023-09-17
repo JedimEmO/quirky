@@ -6,6 +6,7 @@ use quirky::primitives::quad::Quads;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky::widgets::drawable_image::DrawableImageBuilder;
 use quirky::widgets::layout_item::LayoutItemBuilder;
 use quirky::widgets::slab::SlabBuilder;
 use quirky::widgets::text_layout::TextLayoutBuilder;
@@ -84,15 +85,15 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                             .padding_signal(clone!(padding, move || padding.signal()))
                             .child(SlabBuilder::new().build())
                             .build(),
-                        SlabBuilder::new().build(),
+                        TextLayoutBuilder::new()
+                            .text(lipsum_words(400).into())
+                            .build(),
                     ])
                     .size_constraint(SizeConstraint::MaxWidth(300))
                     .build(),
                 BoxLayoutBuilder::new()
                     .child_direction(ChildDirection::Vertical)
-                    .children(vec![TextLayoutBuilder::new()
-                        .text(lipsum_words(2000).into())
-                        .build()])
+                    .children(vec![DrawableImageBuilder::new().build()])
                     .size_constraint(SizeConstraint::Unconstrained)
                     .build(),
             ])

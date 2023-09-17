@@ -1,3 +1,4 @@
+use crate::primitives::image::ImagePrimitive;
 use crate::primitives::quad::{Quad, Quads};
 use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
@@ -9,8 +10,9 @@ use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::{uvec2, UVec2};
+use image::{Rgba, RgbaImage};
 use quirky_macros::widget;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -82,31 +84,27 @@ impl<
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let widget_events = ctx.subscribe_to_widget_events(self.id());
-        let widget_events = futures_signals::signal::from_stream(widget_events);
 
-        let event_redraw = widget_events
-            .throttle(|| sleep(Duration::from_millis(5)))
-            .for_each(clone!(self, move |e| {
-                clone!(self, async move {
-                    if let Some(e) = e {
-                        let ec = e.clone();
-                        match e {
-                            WidgetEvent::MouseEvent { event } => match event {
-                                MouseEvent::Move { .. } => {
-                                    self.is_hovered.set(true);
-                                }
-                                MouseEvent::Leave {} => {
-                                    self.is_hovered.set(false);
-                                }
-                                MouseEvent::ButtonDown { .. } => {
-                                    (self.on_event)(Event { widget_event: ec });
-                                }
-                                _ => {}
-                            },
+        let event_redraw = widget_events.for_each(clone!(self, move |e| {
+            clone!(self, async move {
+                let ec = e.clone();
+
+                match e {
+                    WidgetEvent::MouseEvent { event } => match event {
+                        MouseEvent::Move { .. } => {
+                            self.is_hovered.set(true);
                         }
-                    }
-                })
-            }));
+                        MouseEvent::Leave {} => {
+                            self.is_hovered.set(false);
+                        }
+                        MouseEvent::ButtonDown { .. } => {
+                            (self.on_event)(Event { widget_event: ec });
+                        }
+                        _ => {}
+                    },
+                }
+            })
+        }));
 
         let hover_redraw = self.is_hovered.signal().dedupe().for_each(|_| {
             let ctx = &*ctx;

@@ -1,8 +1,9 @@
 use glam::UVec2;
+use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
 use quirky::{MouseButton, MouseEvent, QuirkyApp, WidgetEvent};
-use std::sync::{Arc};
-use glyphon::{FontSystem, SwashCache};
+use std::sync::Arc;
+use uuid::Uuid;
 use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
     TextureFormat,
@@ -22,7 +23,11 @@ pub struct QuirkyWinitApp {
 }
 
 impl QuirkyWinitApp {
-    pub async fn new(widget: Arc<dyn Widget>, font_system: FontSystem, font_cache: SwashCache) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
+    pub async fn new(
+        widget: Arc<dyn Widget>,
+        font_system: FontSystem,
+        font_cache: SwashCache,
+    ) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -61,7 +66,14 @@ impl QuirkyWinitApp {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
-        let quirky_app = Arc::new(QuirkyApp::new(device, queue, surface_format, widget, font_system, font_cache));
+        let quirky_app = Arc::new(QuirkyApp::new(
+            device,
+            queue,
+            surface_format,
+            widget,
+            font_system,
+            font_cache,
+        ));
 
         let quirky_winit_app = Self {
             quirky_app: quirky_app.clone(),
@@ -91,7 +103,9 @@ impl QuirkyWinitApp {
             .expect("invalid QuirkiWinitApp: missing event loop");
 
         let mut mouse_pos = PhysicalPosition::default();
-        let mut prev_hovered: Option<uuid::Uuid> = None;
+        let mut prev_hovered: Option<Uuid> = None;
+        let mut target_widget: Option<Uuid> = None;
+        let mut prev_drag_pos: Option<UVec2> = None;
 
         event_loop.run(move |event, _target, control_flow: &mut ControlFlow| {
             *control_flow = ControlFlow::Wait;
@@ -107,40 +121,85 @@ impl QuirkyWinitApp {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     WindowEvent::MouseInput { state, .. } => {
-                        if state == ElementState::Released {
-                            if let Some(p) = self.quirky_app
-                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32)) {
+                        if state == ElementState::Pressed {
+                            if let Some(p) = self
+                                .quirky_app
+                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32))
+                            {
+                                prev_drag_pos =
+                                    Some(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32));
+
+                                let new_target_widget = *p.first().unwrap();
+
+                                target_widget = Some(new_target_widget);
+
                                 self.quirky_app.dispatch_event_to_widget(
-                                    *p.first().unwrap(),
+                                    new_target_widget,
                                     WidgetEvent::MouseEvent {
-                                        event: MouseEvent::ButtonDown { button: MouseButton::Left },
+                                        event: MouseEvent::ButtonDown {
+                                            button: MouseButton::Left,
+                                        },
                                     },
                                 );
                             }
+                        }
+
+                        if state == ElementState::Released {
+                            if let Some(prev_target_widget) = target_widget {
+                                self.quirky_app.dispatch_event_to_widget(
+                                    prev_target_widget,
+                                    WidgetEvent::MouseEvent {
+                                        event: MouseEvent::ButtonUp {
+                                            button: MouseButton::Left,
+                                        },
+                                    },
+                                );
+                            }
+
+                            target_widget = None
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {
                         mouse_pos = position;
                         let pos = UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32);
-                        if let Some(widgets) = self.quirky_app.get_widgets_at(pos) {
-                            if let Some(p) = prev_hovered {
-                                self.quirky_app.dispatch_event_to_widget(
-                                    p,
-                                    WidgetEvent::MouseEvent {
-                                        event: MouseEvent::Leave {},
+
+                        if target_widget.is_some() && prev_drag_pos.is_some() {
+                            self.quirky_app.dispatch_event_to_widget(
+                                target_widget.unwrap(),
+                                WidgetEvent::MouseEvent {
+                                    event: MouseEvent::Drag {
+                                        from: prev_drag_pos.unwrap(),
+                                        to: pos,
                                     },
-                                );
+                                },
+                            );
+                        }
+
+                        if let Some(widgets) = self.quirky_app.get_widgets_at(pos) {
+                            let new_target_widget = *widgets.first().unwrap();
+
+                            if let Some(p) = prev_hovered {
+                                if p != new_target_widget {
+                                    self.quirky_app.dispatch_event_to_widget(
+                                        p,
+                                        WidgetEvent::MouseEvent {
+                                            event: MouseEvent::Leave {},
+                                        },
+                                    );
+                                }
                             }
 
-                            let w = widgets.first().unwrap();
-                            prev_hovered = Some(*w);
+                            prev_hovered = Some(new_target_widget);
+
                             self.quirky_app.dispatch_event_to_widget(
-                                *w,
+                                new_target_widget,
                                 WidgetEvent::MouseEvent {
                                     event: MouseEvent::Move { pos },
                                 },
                             );
                         }
+
+                        prev_drag_pos = Some(pos);
                     }
                     _ => {}
                 },
@@ -161,7 +220,8 @@ impl QuirkyWinitApp {
                 view_formats: vec![],
             };
 
-            self.surface.configure(&self.quirky_app.context.device, &config);
+            self.surface
+                .configure(&self.quirky_app.context.device, &config);
             self.quirky_app
                 .viewport_size
                 .set(UVec2::new(new_size.width, new_size.height));
