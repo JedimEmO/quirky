@@ -1,25 +1,16 @@
+use crate::primitives::{DrawablePrimitive, PrepareContext};
+use crate::quirky_app_context::QuirkyAppContext;
 use crate::{LayoutBox, SizeConstraint, WidgetEvent};
-use futures_signals::signal::{always, ReadOnlyMutable, Signal};
-use futures_signals::signal_vec::MutableVec;
-
-use crate::primitives::DrawablePrimitive;
-use crate::quirky_app_context::{FontContext, QuirkyAppContext};
 use futures::Stream;
+use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache, TextAtlas};
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::{Device, Queue};
+use wgpu::Device;
 
 #[derive(Clone)]
 pub struct Event {
     pub widget_event: WidgetEvent,
-}
-
-pub struct PrepareContext<'a> {
-    pub font_system: &'a mut FontSystem,
-    pub text_atlas: &'a mut TextAtlas,
-    pub font_cache: &'a mut SwashCache,
 }
 
 pub trait WidgetBase {

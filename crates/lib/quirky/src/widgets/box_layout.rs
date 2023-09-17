@@ -1,16 +1,16 @@
-use crate::primitives::DrawablePrimitive;
-use crate::quirky_app_context::{FontContext, QuirkyAppContext};
-use crate::widget::{PrepareContext, Widget, WidgetBase};
+use crate::primitives::{DrawablePrimitive, PrepareContext};
+use crate::quirky_app_context::QuirkyAppContext;
+use crate::widget::{Widget, WidgetBase};
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, SizeConstraint};
 use async_trait::async_trait;
-use futures_signals::signal::{ReadOnlyMutable, Signal};
+use futures_signals::signal::Signal;
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::{Device, Queue};
+use wgpu::Device;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ChildDirection {
@@ -20,12 +20,12 @@ pub enum ChildDirection {
 
 #[widget]
 pub struct BoxLayout {
-    #[signal]
+    #[signal_prop]
     pub children: Vec<Arc<dyn Widget>>,
-    #[signal]
+    #[signal_prop]
     #[default(ChildDirection::Vertical)]
     pub child_direction: ChildDirection,
-    #[signal]
+    #[signal_prop]
     #[default(SizeConstraint::Unconstrained)]
     pub size_constraint: SizeConstraint,
     child_data: MutableVec<Arc<dyn Widget>>,

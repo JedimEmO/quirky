@@ -1,4 +1,4 @@
-use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
+use crate::primitives::{DrawablePrimitive, PrepareContext, Primitive, RenderContext};
 use glam::UVec2;
 use once_cell::sync::OnceCell;
 use std::mem;
@@ -107,6 +107,8 @@ impl Quads {
 }
 
 impl DrawablePrimitive for Quads {
+    fn prepare(&mut self, render_context: &PrepareContext) -> () {}
+
     fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
         if let Some(pipeline) = QUAD_PIPELINE.get() {
             pass.set_pipeline(pipeline);

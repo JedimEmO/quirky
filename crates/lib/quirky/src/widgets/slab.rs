@@ -1,30 +1,28 @@
 use crate::primitives::quad::{Quad, Quads};
-use crate::primitives::DrawablePrimitive;
-use crate::quirky_app_context::{FontContext, QuirkyAppContext};
-use crate::widget::{Event, PrepareContext, Widget, WidgetBase, WidgetEventHandler};
+use crate::primitives::{DrawablePrimitive, PrepareContext};
+use crate::quirky_app_context::QuirkyAppContext;
+use crate::widget::{Event, Widget, WidgetBase, WidgetEventHandler};
 use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
 use async_std::prelude::Stream;
 use async_std::task::sleep;
 use async_trait::async_trait;
-use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use futures_signals::signal::{always, ReadOnlyMutable, Signal};
+use futures_signals::signal::{always, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
-use futures_signals::signal_vec::MutableVec;
 use glam::{uvec2, UVec2};
 use quirky_macros::widget;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
-use wgpu::{Device, MultisampleState, Queue};
+use wgpu::Device;
 
 #[widget]
 pub struct Slab {
-    #[signal]
+    #[signal_prop]
     #[default([0.005, 0.005, 0.005, 1.0])]
     color: [f32; 4],
-    #[signal]
+    #[signal_prop]
     #[default("".into())]
     text: Arc<str>,
     is_hovered: Mutable<bool>,

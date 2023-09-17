@@ -8,7 +8,6 @@ pub mod widgets;
 use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
-use crate::widget::PrepareContext;
 use async_std::task::{block_on, sleep};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -20,6 +19,7 @@ use futures_signals::signal_vec::MutableVec;
 use futures_signals::signal_vec::SignalVecExt;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
+use primitives::PrepareContext;
 use quirky_app_context::QuirkyAppContext;
 use std::borrow::BorrowMut;
 use std::fmt::Debug;
@@ -240,6 +240,12 @@ impl QuirkyApp {
                 &self.context,
                 &mut paint_context,
             );
+
+            for drawable in drawables.iter_mut() {
+                for d in drawable.1.iter_mut() {
+                    d.prepare(&paint_context);
+                }
+            }
 
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

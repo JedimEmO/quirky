@@ -5,6 +5,7 @@ use lipsum::{lipsum_title, lipsum_words};
 use quirky::primitives::quad::Quads;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky::widgets::layout_item::LayoutItemBuilder;
 use quirky::widgets::slab::SlabBuilder;
 use quirky::widgets::text_layout::{TextLayout, TextLayoutBuilder};
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
@@ -59,7 +60,9 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                                 }
                             }))
                             .build(),
-                        SlabBuilder::new().build(),
+                        LayoutItemBuilder::new()
+                            .child(SlabBuilder::new().build())
+                            .build(),
                         SlabBuilder::new().build(),
                     ])
                     .size_constraint(SizeConstraint::MaxWidth(300))

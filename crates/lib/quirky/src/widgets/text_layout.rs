@@ -1,7 +1,7 @@
-use crate::primitives::DrawablePrimitive;
+use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
+use crate::widget::WidgetBase;
 use crate::widget::{Event, Widget};
-use crate::widget::{PrepareContext, WidgetBase};
 use crate::SizeConstraint;
 use crate::{clone, LayoutBox};
 use async_std::task::sleep;
@@ -10,7 +10,6 @@ use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
-use futures_signals::signal_vec::MutableVec;
 use glam::{uvec2, UVec2};
 use glyphon::{
     Attrs, Buffer, Color, Family, Metrics, Resolution, Shaping, TextArea, TextBounds, TextRenderer,
@@ -18,17 +17,17 @@ use glyphon::{
 use quirky_macros::widget;
 use std::borrow::Borrow;
 use std::borrow::BorrowMut;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
-use wgpu::{Device, MultisampleState, Queue};
+use wgpu::Device;
 
 #[widget]
 pub struct TextLayout {
-    #[signal]
+    #[signal_prop]
     #[default([1.0, 1.0, 1.0, 1.0])]
     color: [f32; 4],
-    #[signal]
+    #[signal_prop]
     #[default("".into())]
     text: Arc<str>,
     #[callback]
