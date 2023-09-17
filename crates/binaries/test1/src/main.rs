@@ -42,13 +42,13 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
 
     tokio::spawn(clone!(padding, async move {
         loop {
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(500)).await;
             padding.set({
                 Padding {
-                    top: random::<u32>() % 40,
-                    left: random::<u32>() % 40,
-                    bottom: random::<u32>() % 40,
-                    right: random::<u32>() % 40,
+                    top: random::<u32>() % 100,
+                    left: random::<u32>() % 100,
+                    bottom: random::<u32>() % 200,
+                    right: random::<u32>() % 200,
                 }
             })
         }
@@ -91,7 +91,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                 BoxLayoutBuilder::new()
                     .child_direction(ChildDirection::Vertical)
                     .children(vec![TextLayoutBuilder::new()
-                        .text(lipsum_words(400).into())
+                        .text(lipsum_words(2000).into())
                         .build()])
                     .size_constraint(SizeConstraint::Unconstrained)
                     .build(),

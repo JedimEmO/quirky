@@ -1,11 +1,13 @@
 use crate::quirky_app_context::QuirkyAppContext;
+use crate::styling::Padding;
 use crate::widget::{Widget, WidgetBase};
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, SizeConstraint};
 use async_trait::async_trait;
 use futures::FutureExt;
-use futures_signals::signal::Signal;
+use futures_signals::map_ref;
 use futures_signals::signal::SignalExt;
+use futures_signals::signal::{Mutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use quirky_macros::widget;
@@ -28,6 +30,9 @@ pub struct BoxLayout {
     #[signal_prop]
     #[default(SizeConstraint::Unconstrained)]
     pub size_constraint: SizeConstraint,
+    #[signal_prop]
+    #[default(Default::default())]
+    padding: Padding,
     child_data: MutableVec<Arc<dyn Widget>>,
 }
 
@@ -43,6 +48,8 @@ impl<
         ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
         SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
         SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
+        PaddingSignal: futures_signals::signal::Signal<Item = Padding> + Send + Sync + Unpin + 'static,
+        PaddingSignalFn: Fn() -> PaddingSignal + Send + Sync + 'static,
     > Widget
     for BoxLayout<
         ChildrenSignal,
@@ -51,6 +58,8 @@ impl<
         ChildDirectionSignalFn,
         SizeConstraintSignal,
         SizeConstraintSignalFn,
+        PaddingSignal,
+        PaddingSignalFn,
     >
 {
     fn children(&self) -> Option<Vec<Arc<dyn Widget>>> {
@@ -86,18 +95,70 @@ impl<
             self.child_data.clone(),
             ctx,
             (self.children)(),
-            (self.child_direction)(),
+            self.layout_extras(),
             box_layout_strategy,
         )
         .await;
     }
 }
 
+impl<
+        ChildrenSignal: futures_signals::signal::Signal<Item = Vec<Arc<dyn Widget>>>
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
+        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
+        ChildDirectionSignal: futures_signals::signal::Signal<Item = ChildDirection> + Send + Sync + Unpin + 'static,
+        ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
+        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
+        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
+        PaddingSignal: futures_signals::signal::Signal<Item = Padding> + Send + Sync + Unpin + 'static,
+        PaddingSignalFn: Fn() -> PaddingSignal + Send + Sync + 'static,
+    >
+    BoxLayout<
+        ChildrenSignal,
+        ChildrenSignalFn,
+        ChildDirectionSignal,
+        ChildDirectionSignalFn,
+        SizeConstraintSignal,
+        SizeConstraintSignalFn,
+        PaddingSignal,
+        PaddingSignalFn,
+    >
+{
+    fn layout_extras(&self) -> impl Signal<Item = (ChildDirection, Padding)> {
+        map_ref! {
+            let padding = (self.padding)(),
+            let direction = (self.child_direction)() => {
+                (*direction, *padding)
+            }
+        }
+    }
+}
+
 fn box_layout_strategy(
     container_box: &LayoutBox,
     child_constraints: &Vec<SizeConstraint>,
-    direction: &ChildDirection,
+    extras: &(ChildDirection, Padding),
 ) -> Vec<LayoutBox> {
+    let direction = extras.0;
+    let padding = extras.1;
+
+    let padding_total = UVec2::new(padding.left + padding.right, padding.top + padding.bottom);
+
+    if container_box.size.x < padding_total.x || container_box.size.y < padding_total.y {
+        return vec![];
+    }
+
+    let top_left = container_box.pos + UVec2::new(padding.left, padding.top);
+    let size = container_box.size - padding_total;
+
+    let container_box = LayoutBox {
+        pos: top_left,
+        size,
+    };
+
     let total_items = child_constraints.len().max(1) as u32;
 
     let min_requirements_x: u32 = child_constraints
@@ -116,7 +177,7 @@ fn box_layout_strategy(
         })
         .sum();
 
-    if direction == &ChildDirection::Horizontal {
+    if direction == ChildDirection::Horizontal {
         let remaining_width = if container_box.size.x < min_requirements_x {
             container_box.size.x
         } else {
