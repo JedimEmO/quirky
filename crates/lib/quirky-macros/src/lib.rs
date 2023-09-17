@@ -4,10 +4,7 @@ mod widget_struct;
 
 use crate::builder::BuilderStruct;
 use crate::widget_struct::WidgetStructParsed;
-use convert_case::Casing;
 use proc_macro::TokenStream;
-use syn::parse::Parse;
-use syn::spanned::Spanned;
 
 ///
 /// # Example

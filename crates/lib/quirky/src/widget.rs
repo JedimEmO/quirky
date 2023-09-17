@@ -6,7 +6,6 @@ use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use glam::UVec2;
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::Device;
 
 #[derive(Clone)]
 pub struct Event {
@@ -48,5 +47,5 @@ pub trait Widget: WidgetBase + Send + Sync {
         None
     }
 
-    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device);
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext);
 }

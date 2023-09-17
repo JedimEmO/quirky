@@ -2,25 +2,20 @@ use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::WidgetBase;
 use crate::widget::{Event, Widget};
+use crate::LayoutBox;
 use crate::SizeConstraint;
-use crate::{clone, LayoutBox};
-use async_std::task::sleep;
 use async_trait::async_trait;
 use futures::executor::block_on;
-use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+use futures_signals::signal::{always, Signal, SignalExt};
 use glam::{uvec2, UVec2};
 use glyphon::{
     Attrs, Buffer, Color, Family, Metrics, Resolution, Shaping, TextArea, TextBounds, TextRenderer,
 };
 use quirky_macros::widget;
-use std::borrow::Borrow;
 use std::borrow::BorrowMut;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::Device;
 
 #[widget]
 pub struct TextLayout {
@@ -32,9 +27,6 @@ pub struct TextLayout {
     text: Arc<str>,
     #[callback]
     on_event: Event,
-    draw_color: RwLock<[f32; 4]>,
-    #[default(RwLock::new("".into()))]
-    text_content: RwLock<Arc<str>>,
     text_buffer: futures::lock::Mutex<Option<Buffer>>,
 }
 
@@ -64,7 +56,7 @@ impl<
 
             buf.set_text(
                 &mut paint_ctx.font_system,
-                &self.text_content.read().unwrap(),
+                &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
@@ -87,7 +79,7 @@ impl<
 
             buffer.set_text(
                 &mut paint_ctx.font_system,
-                &self.text_content.read().unwrap(),
+                &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
@@ -143,65 +135,8 @@ impl<
         None
     }
 
-    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device) {
-        let mut futs = FuturesUnordered::new();
-        let redraw_counter = Mutable::new(0);
-
-        let redraw_sig = redraw_counter
-            .signal()
-            .throttle(|| sleep(Duration::from_millis(5)))
-            .for_each(clone!(self, move |_| {
-                self.set_dirty();
-                async move {
-                    ctx.signal_redraw().await;
-                }
-            }));
-
-        let color_sig = (self.color)().for_each(clone!(
-            self,
-            clone!(redraw_counter, move |c| {
-                *self.draw_color.write().unwrap() = c;
-                async move {}
-            })
-        ));
-
-        let str_sig = (self.text)().for_each(clone!(
-            self,
-            clone!(redraw_counter, move |txt| {
-                clone!(
-                    txt,
-                    clone!(
-                        self,
-                        clone!(redraw_counter, async move {
-                            *self.text_content.write().unwrap() = txt.clone();
-
-                            redraw_counter.set(redraw_counter.get() + 1);
-                        })
-                    )
-                )
-            })
-        ));
-
-        let bb_redraw = self
-            .bounding_box
-            .signal()
-            .throttle(|| sleep(Duration::from_millis(500)))
-            .for_each(clone!(
-                self,
-                clone!(redraw_counter, move |bb| {
-                    clone!(
-                        self,
-                        clone!(redraw_counter, async move {
-                            redraw_counter.set(redraw_counter.get() + 1);
-                        })
-                    )
-                })
-            ));
-
-        futs.push(redraw_sig.boxed());
-        futs.push(color_sig.boxed());
-        futs.push(str_sig.boxed());
-        futs.push(bb_redraw.boxed());
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
+        let mut futs = self.poll_prop_futures(ctx);
 
         loop {
             let _n = futs.select_next_some().await;

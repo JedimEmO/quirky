@@ -1,9 +1,7 @@
 pub mod quad;
 pub mod text;
-
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
-use wgpu::util::DeviceExt;
 use wgpu::{BindGroup, BindGroupLayout, Device, TextureFormat};
 
 pub struct RenderContext<'a> {
@@ -27,6 +25,6 @@ pub trait Primitive {
 }
 
 pub trait DrawablePrimitive: Send + Sync {
-    fn prepare(&mut self, render_context: &PrepareContext) -> ();
+    fn prepare(&mut self, _render_context: &PrepareContext) -> () {}
     fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, ctx: &RenderContext<'a>);
 }

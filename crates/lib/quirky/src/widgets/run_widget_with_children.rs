@@ -7,7 +7,6 @@ use futures::{select, StreamExt};
 use futures_signals::signal::{Signal, SignalExt};
 use futures_signals::signal_vec::{MutableVec, SignalVecExt};
 use std::sync::Arc;
-use wgpu::Device;
 
 pub async fn run_widget_with_children<'a, TExtras: Send>(
     widget: Arc<dyn Widget>,
@@ -16,7 +15,6 @@ pub async fn run_widget_with_children<'a, TExtras: Send>(
     widget_children: impl Signal<Item = Vec<Arc<dyn Widget>>> + Unpin,
     extras_signal: impl Signal<Item = TExtras> + Send,
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
-    device: &Device,
 ) {
     let children = children_data.signal_vec_cloned().to_signal_cloned();
 
@@ -46,7 +44,7 @@ pub async fn run_widget_with_children<'a, TExtras: Send>(
                         let child = children_data.lock_ref()[idx].clone();
 
                         child.set_bounding_box(*l);
-                        child_run_futs.push(child.run(ctx, device));
+                        child_run_futs.push(child.run(ctx));
                     });
                 }
             }

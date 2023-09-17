@@ -365,6 +365,22 @@ impl BuilderStruct {
     }
 
     fn real_struct_props(&self) -> Vec<TokenStream> {
+        let signal_prop_value_members = self
+            .widget_struct
+            .signal_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    field_type,
+                    ..
+                } = f;
+                let name = syn::parse_str::<Ident>(format!("{}_prop_value", field_name).as_str())
+                    .expect("f");
+                quote! { #name: futures_signals::signal::Mutable<Option<#field_type>>}
+            })
+            .collect::<Vec<_>>();
+
         let real_struct_members = self
             .widget_struct
             .signal_props
@@ -378,6 +394,7 @@ impl BuilderStruct {
                 quote! { #field_name: #signal_fn_name }
             })
             .collect::<Vec<_>>();
+
         let real_struct_callback_members = self
             .widget_struct
             .callbacks
@@ -408,6 +425,7 @@ impl BuilderStruct {
             real_struct_members,
             real_struct_callback_members,
             struct_fields_decl,
+            signal_prop_value_members,
         ]
         .into_iter()
         .flatten()
@@ -415,6 +433,28 @@ impl BuilderStruct {
     }
 
     fn real_struct_props_init(&self) -> Vec<TokenStream> {
+        let signal_prop_value_members_ctor = self
+            .widget_struct
+            .signal_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    default,
+                    ..
+                } = f;
+
+                let name = syn::parse_str::<Ident>(format!("{}_prop_value", field_name).as_str())
+                    .expect("f");
+
+                if let Some(default) = default {
+                    quote! { #name: futures_signals::signal::Mutable::new(Some(#default)) }
+                } else {
+                    quote! { #name: futures_signals::signal::Mutable::new(None) }
+                }
+            })
+            .collect::<Vec<_>>();
+
         let real_struct_member_ctors = self
             .widget_struct
             .signal_props
@@ -467,10 +507,65 @@ impl BuilderStruct {
             real_struct_member_ctors,
             real_struct_member_callback_ctors,
             struct_fields_init,
+            signal_prop_value_members_ctor,
         ]
         .into_iter()
         .flatten()
         .collect::<Vec<_>>()
+    }
+
+    /// Generates a runner function for all the token streams,
+    /// to avoid lots and lots of boilerplate to populate field value props with stream values
+    fn props_runner(&self) -> TokenStream {
+        let sig_gens = self.widget_struct.signal_props.iter().map(|s| {
+            let runner = self.sig_runner(s);
+
+            quote! {
+                #runner.boxed()
+            }
+        });
+
+        quote! {
+            fn poll_prop_futures<'a>(&'a self, ctx: &'a QuirkyAppContext) -> futures::stream::FuturesUnordered<futures::future::BoxFuture<'a, ()>> {
+                let mut futs = futures::stream::FuturesUnordered::new();
+
+                for f in vec![#(#sig_gens),*] {
+                    futs.push(f);
+                }
+
+                futs.push(self
+                    .bounding_box
+                    .signal()
+                    .throttle(|| async_std::task::sleep(std::time::Duration::from_millis(20)))
+                    .for_each(|_| {
+                        let ctx = &*ctx;
+                        self.set_dirty();
+
+                        async move {
+                            ctx.signal_redraw().await;
+                        }
+                    }).boxed());
+
+                futs
+            }
+        }
+    }
+
+    fn sig_runner(&self, sig: &FnSignalProp) -> TokenStream {
+        let sig_name = sig.field_name.clone();
+        let sig_propname =
+            syn::parse_str::<Ident>(format!("{}_prop_value", sig_name).as_str()).expect("f");
+
+        quote! {
+            (self.#sig_name)().for_each(|incoming_value| {
+                self.#sig_propname.set(Some(incoming_value));
+                let ctx = &*ctx;
+                self.set_dirty();
+                async move {
+                    ctx.signal_redraw().await;
+                }
+            })
+        }
     }
 
     fn builder_name(&self) -> Ident {
@@ -496,6 +591,8 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
 
         let real_struct_members = self.real_struct_props();
         let real_struct_member_inits = self.real_struct_props_init();
+
+        let props_runner = self.props_runner();
 
         quote! {
         pub struct #builder_name<#(#builder_struct_generics_params_decl),*> {
@@ -528,6 +625,10 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
             bounding_box: futures_signals::signal::Mutable<LayoutBox>,
             dirty: futures_signals::signal::Mutable<bool>,
             #(#real_struct_members),*
+        }
+
+        impl<#(#builder_struct_generics_params),*> #struct_name<#(#builder_struct_generics_params_names),*> {
+            #props_runner
         }
 
         impl<#(#builder_struct_generics_params),*> WidgetBase for #struct_name<#(#builder_struct_generics_params_names),*> {

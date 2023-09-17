@@ -1,16 +1,16 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::{Widget, WidgetBase};
 use crate::widgets::run_widget_with_children::run_widget_with_children;
 use crate::{LayoutBox, SizeConstraint};
 use async_trait::async_trait;
+use futures::FutureExt;
 use futures_signals::signal::Signal;
+use futures_signals::signal::SignalExt;
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::Device;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ChildDirection {
@@ -57,16 +57,6 @@ impl<
         Some(self.child_data.lock_ref().to_vec())
     }
 
-    fn paint(
-        &self,
-        _quirky_context: &QuirkyAppContext,
-        paint_ctx: &mut PrepareContext,
-    ) -> Vec<Box<dyn DrawablePrimitive>> {
-        let _bb = self.bounding_box.get();
-
-        vec![]
-    }
-
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
         Box::new((self.size_constraint)())
     }
@@ -90,7 +80,7 @@ impl<
         None
     }
 
-    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device) {
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         run_widget_with_children(
             self.clone(),
             self.child_data.clone(),
@@ -98,7 +88,6 @@ impl<
             (self.children)(),
             (self.child_direction)(),
             box_layout_strategy,
-            device,
         )
         .await;
     }

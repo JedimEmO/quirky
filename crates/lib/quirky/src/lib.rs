@@ -9,9 +9,9 @@ use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
 use async_std::task::{block_on, sleep};
+use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use futures::{select, Stream};
 use futures::{Future, FutureExt};
 use futures_signals::map_ref;
 use futures_signals::signal::{Mutable, Signal, SignalExt};
@@ -26,7 +26,7 @@ use std::fmt::Debug;
 use std::iter;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use uuid::Uuid;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -157,7 +157,7 @@ impl QuirkyApp {
 
     pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {
         let widgets = MutableVec::new_with_values(vec![self.widget.clone()]);
-        let fut = run_widgets(&self.context, widgets, &*self.context.device);
+        let fut = run_widgets(&self.context, widgets);
 
         let mut run_futs = FuturesUnordered::new();
 
@@ -330,7 +330,6 @@ impl QuirkyApp {
 pub fn run_widgets<'a, 'b: 'a>(
     ctx: &'b QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
-    device: &'a Device,
 ) -> impl Future<Output = ()> + 'a {
     let runner_fut = async move {
         let next_widgets_stream = widgets.signal_vec_cloned().to_signal_cloned().to_stream();
@@ -338,8 +337,8 @@ pub fn run_widgets<'a, 'b: 'a>(
         let mut next_widgets_stream = next_widgets_stream.map(move |v| {
             let futures = FuturesUnordered::new();
 
-            for (idx, widget) in v.into_iter().enumerate() {
-                futures.push(widget.run(ctx, device));
+            for (_idx, widget) in v.into_iter().enumerate() {
+                futures.push(widget.run(ctx));
             }
 
             futures

@@ -1,4 +1,3 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::Widget;
 use crate::widget::WidgetBase;
@@ -13,7 +12,6 @@ use glam::UVec2;
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
-use wgpu::Device;
 
 #[widget]
 pub struct LayoutItem {
@@ -43,7 +41,7 @@ impl<
             .flatten()
     }
 
-    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext, device: &Device) {
+    async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let children = self.child_data.signal_cloned();
         let extras = always(());
 
@@ -69,10 +67,10 @@ impl<
                         let _layout_lock = ctx.start_layout();
                         child_run_futs = FuturesUnordered::new();
 
-                        layouts.iter().enumerate().for_each(|(idx, l)| {
+                        layouts.iter().enumerate().for_each(|(_idx, l)| {
                             if let Some(child) = self.child_data.get_cloned() {
                                 child.set_bounding_box(*l);
-                                child_run_futs.push(child.run(ctx, device));
+                                child_run_futs.push(child.run(ctx));
                             }
                         });
                     }
