@@ -3,6 +3,7 @@ use glam::UVec2;
 use glyphon::{FontSystem, SwashCache};
 use lipsum::lipsum_words;
 use quirky::primitives::quad::Quads;
+use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky::widgets::layout_item::LayoutItemBuilder;
@@ -10,7 +11,10 @@ use quirky::widgets::slab::SlabBuilder;
 use quirky::widgets::text_layout::TextLayoutBuilder;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
 use quirky_winit::QuirkyWinitApp;
+use rand::random;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() {
@@ -33,6 +37,22 @@ async fn main() {
 
 fn simple_panel_layout() -> Arc<dyn Widget> {
     let click_count = Mutable::new(0);
+
+    let padding = Mutable::new(Padding::default());
+
+    tokio::spawn(clone!(padding, async move {
+        loop {
+            sleep(Duration::from_millis(100)).await;
+            padding.set({
+                Padding {
+                    top: random::<u32>() % 40,
+                    left: random::<u32>() % 40,
+                    bottom: random::<u32>() % 40,
+                    right: random::<u32>() % 40,
+                }
+            })
+        }
+    }));
 
     let children: Mutable<Vec<Arc<dyn Widget>>> = Mutable::new(vec![
         BoxLayoutBuilder::new()
@@ -61,6 +81,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                             }))
                             .build(),
                         LayoutItemBuilder::new()
+                            .padding_signal(clone!(padding, move || padding.signal()))
                             .child(SlabBuilder::new().build())
                             .build(),
                         SlabBuilder::new().build(),

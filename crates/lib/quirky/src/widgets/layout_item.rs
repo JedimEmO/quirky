@@ -1,4 +1,5 @@
 use crate::quirky_app_context::QuirkyAppContext;
+use crate::styling::Padding;
 use crate::widget::Widget;
 use crate::widget::WidgetBase;
 use crate::SizeConstraint;
@@ -17,17 +18,21 @@ use uuid::Uuid;
 pub struct LayoutItem {
     #[signal_prop]
     child: Arc<dyn Widget>,
-    child_data: Mutable<Option<Arc<dyn Widget>>>,
+    #[signal_prop]
+    #[default(Default::default())]
+    padding: Padding,
 }
 
 #[async_trait]
 impl<
-        ChildWidgetSignal: futures_signals::signal::Signal<Item = Arc<dyn Widget>> + Send + Sync + Unpin + 'static,
-        ChildWidgetSignalFn: Fn() -> ChildWidgetSignal + Send + Sync + 'static,
-    > Widget for LayoutItem<ChildWidgetSignal, ChildWidgetSignalFn>
+        ChildSignal: futures_signals::signal::Signal<Item = Arc<dyn Widget>> + Send + Sync + Unpin + 'static,
+        ChildSignalFn: Fn() -> ChildSignal + Send + Sync + 'static,
+        PaddingSignal: futures_signals::signal::Signal<Item = Padding> + Send + Sync + Unpin + 'static,
+        PaddingSignalFn: Fn() -> PaddingSignal + Send + Sync + 'static,
+    > Widget for LayoutItem<ChildSignal, ChildSignalFn, PaddingSignal, PaddingSignalFn>
 {
     fn children(&self) -> Option<Vec<Arc<dyn Widget>>> {
-        self.child_data.get_cloned().map(|v| vec![v])
+        self.child_prop_value.get_cloned().map(|v| vec![v])
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -35,31 +40,28 @@ impl<
     }
 
     fn get_widget_at(&self, pos: UVec2, path: Vec<Uuid>) -> Option<Vec<Uuid>> {
-        self.child_data
+        self.child_prop_value
             .get_cloned()
             .map(|c| c.get_widget_at(pos, path))
             .flatten()
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
-        let children = self.child_data.signal_cloned();
-        let extras = always(());
+        let children = self.child_prop_value.signal_cloned();
 
         let child_layouts = layout(
             self.bounding_box().signal(),
             children.map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
-            extras,
+            (self.padding)(),
             layout_item_strategy,
         );
 
         let mut child_layouts_stream = child_layouts.to_stream();
-        let mut child_run_futs = FuturesUnordered::new();
-        let mut children_stream = (self.child)().to_stream().fuse();
+        let mut child_run_futs = self.poll_prop_futures(ctx);
 
         loop {
             let mut next_layouts = child_layouts_stream.next().fuse();
             let mut next_child_run_fut = child_run_futs.next();
-            let mut next_children = children_stream.select_next_some();
 
             select! {
                 layouts = next_layouts => {
@@ -68,7 +70,7 @@ impl<
                         child_run_futs = FuturesUnordered::new();
 
                         layouts.iter().enumerate().for_each(|(_idx, l)| {
-                            if let Some(child) = self.child_data.get_cloned() {
+                            if let Some(child) = self.child_prop_value.get_cloned() {
                                 child.set_bounding_box(*l);
                                 child_run_futs.push(child.run(ctx));
                             }
@@ -77,10 +79,6 @@ impl<
                 }
 
                 _childruns = next_child_run_fut => {}
-
-                new_child = next_children => {
-                    self.child_data.set(Some(new_child));
-                }
             }
         }
     }
@@ -89,17 +87,20 @@ impl<
 fn layout_item_strategy(
     container_box: &LayoutBox,
     child_constraints: &Vec<SizeConstraint>,
-    _: &(),
+    padding: &Padding,
 ) -> Vec<LayoutBox> {
     if child_constraints.len() == 0 {
         return vec![];
     }
-    if container_box.size.x < 15 || container_box.size.y < 15 {
+
+    let padding_total = UVec2::new(padding.left + padding.right, padding.top + padding.bottom);
+
+    if container_box.size.x < padding_total.x || container_box.size.y < padding_total.y {
         return vec![];
     }
 
-    let top_left = container_box.pos + UVec2::new(5, 5);
-    let size = container_box.size - UVec2::new(10, 10);
+    let top_left = container_box.pos + UVec2::new(padding.left, padding.top);
+    let size = container_box.size - padding_total;
 
     vec![LayoutBox {
         pos: top_left,

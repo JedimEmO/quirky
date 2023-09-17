@@ -1,5 +1,6 @@
 pub mod primitives;
 pub mod quirky_app_context;
+pub mod styling;
 mod ui_camera;
 pub mod view_tree;
 pub mod widget;

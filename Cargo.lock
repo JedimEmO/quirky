@@ -1783,6 +1783,8 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
+ "libc",
+ "rand_chacha",
  "rand_core",
 ]
 
@@ -1801,6 +1803,9 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom",
+]
 
 [[package]]
 name = "range-alloc"
@@ -2132,6 +2137,7 @@ dependencies = [
  "lipsum",
  "quirky",
  "quirky-winit",
+ "rand",
  "tokio",
  "wgpu 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "winit",
