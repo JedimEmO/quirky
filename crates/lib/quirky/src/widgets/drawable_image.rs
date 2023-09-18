@@ -1,19 +1,15 @@
 use crate::primitives::image::ImagePrimitive;
-use crate::primitives::quad::{Quad, Quads};
 use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::{Event, Widget, WidgetBase};
-use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
-use async_std::task::sleep;
+use crate::widget::{Widget, WidgetBase};
+use crate::{clone, LayoutBox, MouseButton, MouseEvent, WidgetEvent};
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
-use futures_signals::signal::{always, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
-use glam::{uvec2, UVec2};
+use glam::UVec2;
 use image::{Rgba, RgbaImage};
 use quirky_macros::widget;
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[widget]
@@ -58,35 +54,52 @@ impl Widget for DrawableImage {
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let widget_events = ctx.subscribe_to_widget_events(self.id());
+        let mouse_pos = Mutable::new(UVec2::default());
 
         let event_redraw = widget_events.for_each(clone!(self, move |e| {
-            clone!(self, async move {
-                let ec = e.clone();
+            clone!(
+                mouse_pos,
+                clone!(self, async move {
+                    let ec = e.clone();
 
-                match e {
-                    WidgetEvent::MouseEvent { event } => match event {
-                        MouseEvent::Drag { from, to } => {
-                            {
-                                let mut image = self.image.lock_mut();
-                                let bb = self.bounding_box.get();
-
-                                let put_x = to.x as i32 - bb.pos.x as i32;
-                                let put_y = to.y as i32 - bb.pos.y as i32;
-
-                                let px = (put_x as f32 / bb.size.x as f32) * 64.0;
-                                let py = (put_y as f32 / bb.size.y as f32) * 64.0;
-
-                                if px >= 0.0 && px < 64.0 && py >= 0.0 && py < 64.0 {
-                                    image.put_pixel(px as u32, py as u32, Rgba([255, 0, 0, 255]));
+                    match e {
+                        WidgetEvent::MouseEvent { event } => match event {
+                            MouseEvent::ButtonDown { button } => {
+                                if button == MouseButton::Middle {
+                                    self.image.lock_mut().fill(0)
                                 }
                             }
-                            self.set_dirty();
-                            ctx.signal_redraw().await;
-                        }
-                        _ => {}
-                    },
-                }
-            })
+                            MouseEvent::Move { pos } => mouse_pos.set(pos),
+                            MouseEvent::Drag { from, to, button } => {
+                                if button != MouseButton::Middle {
+                                    let mut image = self.image.lock_mut();
+                                    let bb = self.bounding_box.get();
+
+                                    let to = mouse_pos.get();
+                                    let put_x = to.x as i32 - bb.pos.x as i32;
+                                    let put_y = to.y as i32 - bb.pos.y as i32;
+
+                                    let px = (put_x as f32 / bb.size.x as f32) * 64.0;
+                                    let py = (put_y as f32 / bb.size.y as f32) * 64.0;
+
+                                    let color = match button {
+                                        MouseButton::Left => Rgba([255, 0, 0, 255]),
+                                        _ => Rgba([0, 255, 0, 255]),
+                                    };
+
+                                    if px >= 0.0 && px < 64.0 && py >= 0.0 && py < 64.0 {
+                                        image.put_pixel(px as u32, py as u32, color);
+                                    }
+                                }
+
+                                self.set_dirty();
+                                ctx.signal_redraw().await;
+                            }
+                            _ => {}
+                        },
+                    }
+                })
+            )
         }));
 
         let mut futs = self.poll_prop_futures(ctx);

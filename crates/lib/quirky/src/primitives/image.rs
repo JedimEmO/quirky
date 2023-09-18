@@ -4,7 +4,10 @@ use image::RgbaImage;
 use std::mem;
 use uuid::Uuid;
 use wgpu::util::DeviceExt;
-use wgpu::{include_wgsl, Buffer, RenderPass, TextureDimension, TextureFormat, VertexState};
+use wgpu::{
+    include_wgsl, BindGroupLayout, Buffer, RenderPass, RenderPipeline, TextureDimension,
+    TextureFormat, VertexState,
+};
 use wgpu_macros::VertexLayout;
 
 static PRIMITIVE_UUID: Uuid = Uuid::from_u128(0x96f1543e_52e7_4f6b_8dc9_c5561df1f404);
@@ -83,6 +86,7 @@ pub struct ImagePrimitive {
 impl DrawablePrimitive for ImagePrimitive {
     fn prepare(&mut self, render_context: &mut PrepareContext) -> () {
         let dimensions = self.data.dimensions();
+
         let texture_size = wgpu::Extent3d {
             width: dimensions.0,
             height: dimensions.1,
@@ -97,7 +101,7 @@ impl DrawablePrimitive for ImagePrimitive {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::R8Unorm,
+                format: TextureFormat::Rgba8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -119,13 +123,14 @@ impl DrawablePrimitive for ImagePrimitive {
         );
 
         let diffuse_texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let diffuse_sampler = render_context
             .device
             .create_sampler(&wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Nearest,
                 min_filter: wgpu::FilterMode::Nearest,
                 mipmap_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
@@ -176,6 +181,80 @@ impl DrawablePrimitive for ImagePrimitive {
                     label: Some("diffuse_bind_group"),
                 });
 
+        ensure_pipeline(render_context, &texture_bind_group_layout);
+
+        self.ensure_buffers(render_context);
+
+        render_context
+            .bind_group_cache
+            .insert(PRIMITIVE_UUID, diffuse_bind_group);
+    }
+
+    fn draw<'a>(&'a self, pass: &mut RenderPass<'a>, ctx: &RenderContext<'a>) {
+        let pipeline = ctx.pipeline_cache.get(&PRIMITIVE_UUID).unwrap();
+        let bind_group = ctx.bind_group_cache.get(&PRIMITIVE_UUID).unwrap();
+
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, ctx.camera_bind_group, &[]);
+        pass.set_bind_group(1, bind_group, &[]);
+        pass.set_vertex_buffer(0, self.vertex_buffer.as_ref().unwrap().slice(..));
+        pass.set_vertex_buffer(1, self.instance_buffer.as_ref().unwrap().slice(..));
+        pass.set_index_buffer(
+            self.index_buffer.as_ref().unwrap().slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+        pass.draw_indexed(0..6, 0, 0..1);
+    }
+}
+
+impl ImagePrimitive {
+    fn ensure_buffers(&mut self, render_context: &mut PrepareContext) {
+        if self.vertex_buffer.is_some() {
+            return;
+        }
+
+        let vertex_buffer =
+            render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("quad index buffer"),
+                    contents: bytemuck::cast_slice(&VERTICES),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+        let index_buffer =
+            render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&INDEXES),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+
+        let instance_buffer =
+            render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("quad index buffer"),
+                    contents: bytemuck::cast_slice(&[Quad {
+                        pos: *self.bb.pos.as_vec2().as_ref(),
+                        size: *self.bb.size.as_vec2().as_ref(),
+                        color: [0.0, 0.0, 0.0, 0.0],
+                    }]),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+
+        self.vertex_buffer = Some(vertex_buffer);
+        self.index_buffer = Some(index_buffer);
+        self.instance_buffer = Some(instance_buffer);
+    }
+}
+
+fn ensure_pipeline<'a>(
+    render_context: &'a mut PrepareContext,
+    texture_bind_group_layout: &BindGroupLayout,
+) {
+    if !render_context.pipeline_cache.contains_key(&PRIMITIVE_UUID) {
         let render_pipeline_layout =
             render_context
                 .device
@@ -227,63 +306,8 @@ impl DrawablePrimitive for ImagePrimitive {
                     multiview: None,
                 });
 
-        let vertex_buffer =
-            render_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("quad index buffer"),
-                    contents: bytemuck::cast_slice(&VERTICES),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-
-        let index_buffer =
-            render_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&INDEXES),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-
-        let instance_buffer =
-            render_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("quad index buffer"),
-                    contents: bytemuck::cast_slice(&[Quad {
-                        pos: *self.bb.pos.as_vec2().as_ref(),
-                        size: *self.bb.size.as_vec2().as_ref(),
-                        color: [0.0, 0.0, 0.0, 0.0],
-                    }]),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-
-        self.vertex_buffer = Some(vertex_buffer);
-        self.index_buffer = Some(index_buffer);
-        self.instance_buffer = Some(instance_buffer);
-
         render_context
             .pipeline_cache
             .insert(PRIMITIVE_UUID, pipeline);
-
-        render_context
-            .bind_group_cache
-            .insert(PRIMITIVE_UUID, diffuse_bind_group);
-    }
-
-    fn draw<'a>(&'a self, pass: &mut RenderPass<'a>, ctx: &RenderContext<'a>) {
-        let pipeline = ctx.pipeline_cache.get(&PRIMITIVE_UUID).unwrap();
-        let bind_group = ctx.bind_group_cache.get(&PRIMITIVE_UUID).unwrap();
-
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, ctx.camera_bind_group, &[]);
-        pass.set_bind_group(1, bind_group, &[]);
-        pass.set_vertex_buffer(0, self.vertex_buffer.as_ref().unwrap().slice(..));
-        pass.set_vertex_buffer(1, self.instance_buffer.as_ref().unwrap().slice(..));
-        pass.set_index_buffer(
-            self.index_buffer.as_ref().unwrap().slice(..),
-            wgpu::IndexFormat::Uint16,
-        );
-        pass.draw_indexed(0..6, 0, 0..1);
     }
 }

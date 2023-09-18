@@ -64,7 +64,7 @@ impl Drop for LayoutToken {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum MouseButton {
     Left,
     Right,
@@ -74,12 +74,24 @@ pub enum MouseButton {
 
 #[derive(Clone)]
 pub enum MouseEvent {
-    Enter { pos: UVec2 },
+    Enter {
+        pos: UVec2,
+    },
     Leave {},
-    Move { pos: UVec2 },
-    ButtonDown { button: MouseButton },
-    ButtonUp { button: MouseButton },
-    Drag { from: UVec2, to: UVec2 },
+    Move {
+        pos: UVec2,
+    },
+    ButtonDown {
+        button: MouseButton,
+    },
+    ButtonUp {
+        button: MouseButton,
+    },
+    Drag {
+        from: UVec2,
+        to: UVec2,
+        button: MouseButton,
+    },
 }
 
 #[derive(Clone)]

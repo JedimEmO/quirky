@@ -106,6 +106,7 @@ impl QuirkyWinitApp {
         let mut prev_hovered: Option<Uuid> = None;
         let mut target_widget: Option<Uuid> = None;
         let mut prev_drag_pos: Option<UVec2> = None;
+        let mut drag_button: Option<MouseButton> = None;
 
         event_loop.run(move |event, _target, control_flow: &mut ControlFlow| {
             *control_flow = ControlFlow::Wait;
@@ -120,7 +121,7 @@ impl QuirkyWinitApp {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::MouseInput { state, .. } => {
+                    WindowEvent::MouseInput { state, button, .. } => {
                         if state == ElementState::Pressed {
                             if let Some(p) = self
                                 .quirky_app
@@ -133,14 +134,22 @@ impl QuirkyWinitApp {
 
                                 target_widget = Some(new_target_widget);
 
-                                self.quirky_app.dispatch_event_to_widget(
-                                    new_target_widget,
-                                    WidgetEvent::MouseEvent {
-                                        event: MouseEvent::ButtonDown {
-                                            button: MouseButton::Left,
+                                if button == winit::event::MouseButton::Left {
+                                    drag_button = Some(MouseButton::Left);
+                                } else if button == winit::event::MouseButton::Right {
+                                    drag_button = Some(MouseButton::Right);
+                                } else if button == winit::event::MouseButton::Middle {
+                                    drag_button = Some(MouseButton::Middle);
+                                }
+
+                                if let Some(b) = &drag_button {
+                                    self.quirky_app.dispatch_event_to_widget(
+                                        new_target_widget,
+                                        WidgetEvent::MouseEvent {
+                                            event: MouseEvent::ButtonDown { button: *b },
                                         },
-                                    },
-                                );
+                                    );
+                                }
                             }
                         }
 
@@ -150,13 +159,14 @@ impl QuirkyWinitApp {
                                     prev_target_widget,
                                     WidgetEvent::MouseEvent {
                                         event: MouseEvent::ButtonUp {
-                                            button: MouseButton::Left,
+                                            button: drag_button.unwrap(),
                                         },
                                     },
                                 );
                             }
 
-                            target_widget = None
+                            drag_button = None;
+                            target_widget = None;
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {
@@ -170,6 +180,7 @@ impl QuirkyWinitApp {
                                     event: MouseEvent::Drag {
                                         from: prev_drag_pos.unwrap(),
                                         to: pos,
+                                        button: drag_button.unwrap(),
                                     },
                                 },
                             );
