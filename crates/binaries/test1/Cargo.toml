@@ -10,6 +10,7 @@ debug = true
 [dependencies]
 async-recursion.workspace = true
 quirky = { path = "../../lib/quirky" }
+quirky-widgets = { path = "../../lib/quirky-widgets" }
 bytemuck.workspace = true
 glam.workspace = true
 glyphon.workspace = true

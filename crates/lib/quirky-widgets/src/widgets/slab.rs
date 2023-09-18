@@ -1,9 +1,3 @@
-use crate::primitives::image::ImagePrimitive;
-use crate::primitives::quad::{Quad, Quads};
-use crate::primitives::{DrawablePrimitive, PrepareContext};
-use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::{Event, Widget, WidgetBase};
-use crate::{clone, LayoutBox, MouseEvent, SizeConstraint, WidgetEvent};
 use async_std::task::sleep;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
@@ -11,9 +5,15 @@ use futures_signals::signal::{always, Signal};
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::{uvec2, UVec2};
 use image::{Rgba, RgbaImage};
+use quirky::primitives::image::ImagePrimitive;
+use quirky::primitives::quad::{Quad, Quads};
+use quirky::primitives::{DrawablePrimitive, PrepareContext};
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::widget::{Event, Widget, WidgetBase};
+use quirky::SizeConstraint;
+use quirky::{clone, MouseButton, MouseEvent, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
 use uuid::Uuid;
 
 #[widget]
@@ -22,8 +22,8 @@ pub struct Slab {
     #[default([0.005, 0.005, 0.005, 1.0])]
     color: [f32; 4],
     #[signal_prop]
-    #[default("".into())]
-    text: Arc<str>,
+    #[default(SizeConstraint::Unconstrained)]
+    pub size_constraint: SizeConstraint,
     is_hovered: Mutable<bool>,
     #[callback]
     on_event: Event,
@@ -31,12 +31,19 @@ pub struct Slab {
 
 #[async_trait]
 impl<
-        ColorSignal: Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
         ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
-        TextSignal: Signal<Item = Arc<str>> + Send + Sync + Unpin + 'static,
-        TextSignalFn: Fn() -> TextSignal + Send + Sync + 'static,
+        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
+        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
         OnEventCallback: Fn(Event) -> () + Send + Sync,
-    > Widget for Slab<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
+    > Widget
+    for Slab<
+        ColorSignal,
+        ColorSignalFn,
+        SizeConstraintSignal,
+        SizeConstraintSignalFn,
+        OnEventCallback,
+    >
 {
     fn paint(
         &self,
@@ -67,7 +74,7 @@ impl<
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
-        Box::new(always(SizeConstraint::MinSize(uvec2(10, 10))))
+        Box::new((self.size_constraint)())
     }
 
     fn get_widget_at(&self, pos: UVec2, mut path: Vec<Uuid>) -> Option<Vec<Uuid>> {
@@ -127,8 +134,8 @@ impl<
 
 #[cfg(test)]
 mod test {
-    use crate::widgets::slab::SlabBuilder;
     use futures_signals::signal::always;
+    use quirky_widgets::widgets::slab::SlabBuilder;
 
     #[test]
     fn slab_builder_test() {

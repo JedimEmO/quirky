@@ -5,12 +5,13 @@ use lipsum::lipsum_words;
 use quirky::primitives::quad::Quads;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
-use quirky::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
-use quirky::widgets::drawable_image::DrawableImageBuilder;
-use quirky::widgets::layout_item::LayoutItemBuilder;
-use quirky::widgets::slab::SlabBuilder;
-use quirky::widgets::text_layout::TextLayoutBuilder;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
+use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
+use quirky_widgets::widgets::label::LabelBuilder;
+use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
+use quirky_widgets::widgets::slab::SlabBuilder;
+use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
 use quirky_winit::QuirkyWinitApp;
 use rand::random;
 use std::sync::Arc;
@@ -38,8 +39,8 @@ async fn main() {
 
 fn simple_panel_layout() -> Arc<dyn Widget> {
     let click_count = Mutable::new(0);
-
     let padding = Mutable::new(Padding::default());
+    let text = Mutable::new("hello, world!".to_string());
 
     tokio::spawn(clone!(padding, async move {
         loop {
@@ -66,20 +67,33 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                     .child_direction(ChildDirection::Vertical)
                     .children(vec![
                         SlabBuilder::new()
-                            .color([0.01, 0.01, 0.1, 1.0])
-                            .text_signal(clone!(click_count, move || click_count
-                                .signal()
-                                .map(|v| format!("Clicked {} times", v).into())))
-                            .on_event(clone!(click_count, move |e| {
+                            .on_event(clone!(text, move |e| {
                                 match e.widget_event {
                                     WidgetEvent::MouseEvent { event } => match event {
-                                        MouseEvent::ButtonDown { button: _ } => {
-                                            click_count.replace_with(|v| *v + 1);
+                                        MouseEvent::ButtonDown { button } => {
+                                            text.set(format!("{}!", text.get_cloned()));
                                         }
                                         _ => {}
                                     },
                                 }
                             }))
+                            .color([0.01, 0.01, 0.1, 1.0])
+                            .build(),
+                        LayoutItemBuilder::new()
+                            .child(
+                                LabelBuilder::new()
+                                    .text_signal(clone!(text, move || text
+                                        .signal_cloned()
+                                        .map(|t| t.into())))
+                                    .build(),
+                            )
+                            .build(),
+                        LayoutItemBuilder::new()
+                            .child(
+                                SlabBuilder::new()
+                                    .size_constraint(SizeConstraint::MinSize(UVec2::new(100, 20)))
+                                    .build(),
+                            )
                             .build(),
                         LayoutItemBuilder::new()
                             .padding_signal(clone!(padding, move || padding.signal()))

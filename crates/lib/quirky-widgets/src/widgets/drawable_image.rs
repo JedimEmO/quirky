@@ -1,20 +1,20 @@
-use crate::primitives::image::ImagePrimitive;
-use crate::primitives::{DrawablePrimitive, PrepareContext};
-use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::{Widget, WidgetBase};
-use crate::{clone, LayoutBox, MouseButton, MouseEvent, WidgetEvent};
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
+use quirky::primitives::image::ImagePrimitive;
+use quirky::primitives::{DrawablePrimitive, PrepareContext};
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::widget::{Widget, WidgetBase};
+use quirky::{clone, MouseButton, MouseEvent, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[widget]
 pub struct DrawableImage {
-    #[default(Mutable::new(image::RgbaImage::new(64, 64)))]
+    #[default(Mutable::new(image::RgbaImage::new(1024, 1024)))]
     image: Mutable<RgbaImage>,
 }
 
@@ -79,15 +79,15 @@ impl Widget for DrawableImage {
                                     let put_x = to.x as i32 - bb.pos.x as i32;
                                     let put_y = to.y as i32 - bb.pos.y as i32;
 
-                                    let px = (put_x as f32 / bb.size.x as f32) * 64.0;
-                                    let py = (put_y as f32 / bb.size.y as f32) * 64.0;
+                                    let px = (put_x as f32 / bb.size.x as f32) * 1024.0;
+                                    let py = (put_y as f32 / bb.size.y as f32) * 1024.0;
 
                                     let color = match button {
                                         MouseButton::Left => Rgba([255, 0, 0, 255]),
                                         _ => Rgba([0, 255, 0, 255]),
                                     };
 
-                                    if px >= 0.0 && px < 64.0 && py >= 0.0 && py < 64.0 {
+                                    if px >= 0.0 && px < 1024.0 && py >= 0.0 && py < 1024.0 {
                                         image.put_pixel(px as u32, py as u32, color);
                                     }
                                 }

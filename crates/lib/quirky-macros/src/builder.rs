@@ -622,25 +622,25 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
 
         pub struct #struct_name<#(#builder_struct_generics_params),*> {
             id: uuid::Uuid,
-            bounding_box: futures_signals::signal::Mutable<LayoutBox>,
+            bounding_box: futures_signals::signal::Mutable<quirky::LayoutBox>,
             dirty: futures_signals::signal::Mutable<bool>,
             #(#real_struct_members),*
         }
 
         impl<#(#builder_struct_generics_params),*> #struct_name<#(#builder_struct_generics_params_names),*> {
-            #props_runner
+
         }
 
-        impl<#(#builder_struct_generics_params),*> WidgetBase for #struct_name<#(#builder_struct_generics_params_names),*> {
-            fn id(&self) -> Uuid {
+        impl<#(#builder_struct_generics_params),*> quirky::widget::WidgetBase for #struct_name<#(#builder_struct_generics_params_names),*> {
+            fn id(&self) -> uuid::Uuid {
                 self.id
             }
 
-             fn set_bounding_box(&self, new_box: LayoutBox) {
+             fn set_bounding_box(&self, new_box: quirky::LayoutBox) {
                 self.bounding_box.set(new_box);
             }
 
-            fn bounding_box(&self) -> futures_signals::signal::ReadOnlyMutable<LayoutBox> {
+            fn bounding_box(&self) -> futures_signals::signal::ReadOnlyMutable<quirky::LayoutBox> {
                 self.bounding_box.read_only()
             }
 
@@ -655,6 +655,8 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
             fn clear_dirty(&self) -> () {
                 self.dirty.set(false);
             }
+
+            #props_runner
         }
     }.into()
     }

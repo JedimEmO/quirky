@@ -1,7 +1,7 @@
 use crate::primitives::{DrawablePrimitive, PrepareContext};
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::{LayoutBox, SizeConstraint, WidgetEvent};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use glam::UVec2;
 use std::sync::Arc;
@@ -19,6 +19,10 @@ pub trait WidgetBase {
     fn dirty(&self) -> ReadOnlyMutable<bool>;
     fn set_dirty(&self) -> ();
     fn clear_dirty(&self) -> ();
+    fn poll_prop_futures<'a>(
+        &'a self,
+        ctx: &'a QuirkyAppContext,
+    ) -> futures::stream::FuturesUnordered<futures::future::BoxFuture<'a, ()>>;
 }
 
 pub trait WidgetEventHandler {
@@ -48,4 +52,12 @@ pub trait Widget: WidgetBase + Send + Sync {
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext);
+}
+
+pub async fn default_run(widget: Arc<dyn Widget>, ctx: &QuirkyAppContext) {
+    let mut futs = widget.poll_prop_futures(ctx);
+
+    loop {
+        let _n = futs.select_next_some().await;
+    }
 }

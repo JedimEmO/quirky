@@ -1,9 +1,3 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext};
-use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::WidgetBase;
-use crate::widget::{Event, Widget};
-use crate::LayoutBox;
-use crate::SizeConstraint;
 use async_trait::async_trait;
 use futures::executor::block_on;
 use futures::{FutureExt, StreamExt};
@@ -12,6 +6,12 @@ use glam::{uvec2, UVec2};
 use glyphon::{
     Attrs, Buffer, Color, Family, Metrics, Resolution, Shaping, TextArea, TextBounds, TextRenderer,
 };
+use quirky::primitives::{DrawablePrimitive, PrepareContext};
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::widget::WidgetBase;
+use quirky::widget::{Event, Widget};
+use quirky::LayoutBox;
+use quirky::SizeConstraint;
 use quirky_macros::widget;
 use std::borrow::BorrowMut;
 use std::sync::Arc;

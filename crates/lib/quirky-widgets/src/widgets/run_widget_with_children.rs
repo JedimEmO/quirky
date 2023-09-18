@@ -1,11 +1,11 @@
-use crate::quirky_app_context::QuirkyAppContext;
-use crate::widget::Widget;
-use crate::{layout, LayoutBox, SizeConstraint};
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::{select, StreamExt};
 use futures_signals::signal::{Signal, SignalExt};
 use futures_signals::signal_vec::{MutableVec, SignalVecExt};
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::widget::Widget;
+use quirky::{layout, LayoutBox, SizeConstraint};
 use std::sync::Arc;
 
 pub async fn run_widget_with_children<'a, TExtras: Send>(

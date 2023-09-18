@@ -498,8 +498,8 @@ mod t {
     use crate::quirky_app_context::QuirkyAppContext;
     use crate::run_widgets;
     use crate::widget::Widget;
-    use crate::widgets::slab::SlabBuilder;
     use futures_signals::signal_vec::MutableVec;
+    use quirky_widgets::widgets::slab::SlabBuilder;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::time::sleep;

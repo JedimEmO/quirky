@@ -1953,6 +1953,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "quirky-widgets"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "futures",
+ "futures-signals",
+ "glam",
+ "glyphon",
+ "image",
+ "quirky",
+ "quirky-macros",
+ "uuid",
+]
+
+[[package]]
 name = "quirky-winit"
 version = "0.1.0"
 dependencies = [
@@ -2365,6 +2381,7 @@ dependencies = [
  "glyphon",
  "lipsum",
  "quirky",
+ "quirky-widgets",
  "quirky-winit",
  "rand",
  "tokio",

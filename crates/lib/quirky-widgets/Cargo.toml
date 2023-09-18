@@ -1,0 +1,18 @@
+[package]
+name = "quirky-widgets"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait.workspace = true
+async-std.workspace = true
+futures.workspace = true
+futures-signals.workspace = true
+glam.workspace = true
+glyphon.workspace = true
+image.workspace = true
+quirky = { path = "../quirky" }
+quirky-macros = { path = "../quirky-macros" }
+uuid.workspace = true

@@ -1,15 +1,14 @@
-use crate::quirky_app_context::QuirkyAppContext;
-use crate::styling::Padding;
-use crate::widget::Widget;
-use crate::widget::WidgetBase;
-use crate::SizeConstraint;
-use crate::{layout, LayoutBox};
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::{select, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
-use glam::UVec2;
+use glam::{IVec2, UVec2};
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::styling::Padding;
+use quirky::widget::Widget;
+use quirky::widget::WidgetBase;
+use quirky::{layout, LayoutBox, SizeConstraint};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -93,6 +92,8 @@ fn layout_item_strategy(
         return vec![];
     }
 
+    let child_constraints = child_constraints.first().unwrap();
+
     let padding_total = UVec2::new(padding.left + padding.right, padding.top + padding.bottom);
 
     if container_box.size.x < padding_total.x || container_box.size.y < padding_total.y {
@@ -102,8 +103,48 @@ fn layout_item_strategy(
     let top_left = container_box.pos + UVec2::new(padding.left, padding.top);
     let size = container_box.size - padding_total;
 
-    vec![LayoutBox {
-        pos: top_left,
-        size,
-    }]
+    let allocated = match child_constraints {
+        SizeConstraint::Unconstrained => LayoutBox {
+            pos: top_left,
+            size,
+        },
+        SizeConstraint::MinSize(required_size) => {
+            let allowed_box = LayoutBox {
+                pos: top_left,
+                size,
+            };
+
+            let leftover_width = allowed_box.size.x as i32 - required_size.x as i32;
+            let leftover_height = allowed_box.size.y as i32 - required_size.y as i32;
+
+            let width = if leftover_width < 0 {
+                allowed_box.size.x as i32
+            } else {
+                required_size.x as i32
+            };
+            let height = if leftover_height < 0 {
+                allowed_box.size.y as i32
+            } else {
+                required_size.y as i32
+            };
+
+            let pad_x = (allowed_box.size.x as i32 - width) / 2;
+            let pad_y = (allowed_box.size.y as i32 - height) / 2;
+
+            LayoutBox {
+                pos: allowed_box.pos + IVec2::new(pad_x, pad_y).as_uvec2(),
+                size: IVec2::new(width, height).as_uvec2(),
+            }
+        }
+        SizeConstraint::MaxHeight(max_height) => LayoutBox {
+            pos: top_left,
+            size,
+        },
+        SizeConstraint::MaxWidth(max_width) => LayoutBox {
+            pos: top_left,
+            size,
+        },
+    };
+
+    vec![allocated]
 }
