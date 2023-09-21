@@ -86,47 +86,41 @@ impl From<Field> for FnSignalProp {
 }
 
 #[derive(Clone)]
-pub(crate) struct CallbackProp {
-    pub callback_name: Ident,
-    pub callback_type_name: Ident,
-    pub callback_type: TypeParamBound,
-    pub callback_default: Type,
+pub(crate) struct SlotProp {
+    pub slot_name: Ident,
+    pub slot_type_name: Ident,
+    pub slot_type: TypeParamBound,
+    pub slot_default: Type,
 }
 
-impl From<Field> for CallbackProp {
+impl From<Field> for SlotProp {
     fn from(f: Field) -> Self {
-        let callback_name = f.ident.clone().expect("missing callback name");
-        let callback_type_name = syn::parse_str::<Ident>(
-            format!("{}Callback", callback_name)
+        let slot_name = f.ident.clone().expect("missing slot name");
+        let slot_type_name = syn::parse_str::<Ident>(
+            format!("{}Callback", slot_name)
                 .to_case(Case::Pascal)
                 .as_str(),
         )
-        .expect("callback name parse fail");
+        .expect("slot name parse fail");
 
         let msg_type = f.ty.clone();
-        let callback_default =
+        let slot_default =
             syn::parse_str::<Type>(format!("fn({}) -> ()", quote! {#msg_type}).as_str())
                 .unwrap_or_else(|_| {
-                    panic!(
-                        "callback default parse error: fn({}) -> ()",
-                        quote! {#msg_type}
-                    )
+                    panic!("slot default parse error: fn({}) -> ()", quote! {#msg_type})
                 });
 
-        let callback_type =
+        let slot_type =
             syn::parse_str::<TypeParamBound>(format!("Fn({}) -> ()", quote! {#msg_type}).as_str())
                 .unwrap_or_else(|_| {
-                    panic!(
-                        "callback type parse error: Fn({}) -> ()",
-                        quote! {#msg_type}
-                    )
+                    panic!("slot type parse error: Fn({}) -> ()", quote! {#msg_type})
                 });
 
-        CallbackProp {
-            callback_name,
-            callback_type_name,
-            callback_type,
-            callback_default,
+        SlotProp {
+            slot_name,
+            slot_type_name,
+            slot_type,
+            slot_default,
         }
     }
 }

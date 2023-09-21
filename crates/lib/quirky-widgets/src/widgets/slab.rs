@@ -25,7 +25,7 @@ pub struct Slab {
     #[default(SizeConstraint::Unconstrained)]
     pub size_constraint: SizeConstraint,
     is_hovered: Mutable<bool>,
-    #[callback]
+    #[slot]
     on_event: Event,
 }
 

@@ -1,11 +1,10 @@
 use async_trait::async_trait;
-use futures::executor::block_on;
 use futures::FutureExt;
 use futures_signals::signal::{Signal, SignalExt};
 use glam::UVec2;
 use glyphon::{
-    Attrs, Buffer, Color, Family, FamilyOwned, Metrics, Resolution, Shaping, Stretch, Style,
-    TextArea, TextBounds, TextRenderer, Weight,
+    Attrs, Buffer, Color, FamilyOwned, Metrics, Resolution, Shaping, Stretch, Style, TextArea,
+    TextBounds, TextRenderer, Weight,
 };
 use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
@@ -154,7 +153,7 @@ impl<
             let len = txt.len();
 
             SizeConstraint::MinSize(UVec2::new(
-                (metrics.font_size * len as f32 / 1.9) as u32,
+                (metrics.font_size * len as f32 / 1.8) as u32,
                 metrics.line_height as u32,
             ))
         }))

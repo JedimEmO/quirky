@@ -1,11 +1,11 @@
-use crate::props::{CallbackProp, FnSignalProp};
+use crate::props::{FnSignalProp, SlotProp};
 use crate::widget_struct::WidgetStructParsed;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::Expr;
 
 /// Describes the builder for our widget struct
-/// Contains all the type-changing setters for our signal props and callbacks.
+/// Contains all the type-changing setters for our signal props and slots.
 /// Setting either of these will result in a new generic parameter type to the builder struct,
 /// so they are fairly complicated.
 pub(crate) struct BuilderStruct {
@@ -35,21 +35,21 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let builder_struct_callback_members = self
+        let builder_struct_slot_members = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_name,
-                    callback_type_name,
+                let SlotProp {
+                    slot_name,
+                    slot_type_name,
                     ..
                 } = f;
-                quote! { #callback_name: Option<#callback_type_name> }
+                quote! { #slot_name: Option<#slot_type_name> }
             })
             .collect::<Vec<_>>();
 
-        vec![builder_struct_members, builder_struct_callback_members]
+        vec![builder_struct_members, builder_struct_slot_members]
             .into_iter()
             .flatten()
             .collect()
@@ -62,14 +62,14 @@ impl BuilderStruct {
             .iter()
             .map(|f| f.field_name.clone())
             .collect::<Vec<_>>();
-        let callback_field_names = self
+        let slot_field_names = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
-            .map(|f| f.callback_name.clone())
+            .map(|f| f.slot_name.clone())
             .collect::<Vec<_>>();
 
-        vec![signal_field_names, callback_field_names]
+        vec![signal_field_names, slot_field_names]
             .into_iter()
             .flatten()
             .collect()
@@ -105,20 +105,20 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let builder_struct_callback_members_defaults = self
+        let builder_struct_slot_members_defaults = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp { callback_name, .. } = f;
+                let SlotProp { slot_name, .. } = f;
 
-                quote! { #callback_name: Some(|_| {}) }
+                quote! { #slot_name: Some(|_| {}) }
             })
             .collect::<Vec<_>>();
 
         vec![
             builder_struct_members_defaults,
-            builder_struct_callback_members_defaults,
+            builder_struct_slot_members_defaults,
         ]
         .into_iter()
         .flatten()
@@ -137,23 +137,23 @@ impl BuilderStruct {
                 quote! { #signal_name: #signal_type + 'static = futures_signals::signal::Always<#field_type>, #signal_fn_name: Fn() -> #signal_name = fn() -> futures_signals::signal::Always<#field_type>}
             }).collect::<Vec<_>>();
 
-        let callback_params = self
+        let slot_params = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_type_name,
-                    callback_type,
-                    callback_default,
+                let SlotProp {
+                    slot_type_name,
+                    slot_type,
+                    slot_default,
                     ..
                 } = f;
 
-                quote! { #callback_type_name: #callback_type + Send + Sync = #callback_default}
+                quote! { #slot_type_name: #slot_type + Send + Sync = #slot_default}
             })
             .collect::<Vec<_>>();
 
-        vec![signal_params, callback_params]
+        vec![signal_params, slot_params]
             .into_iter()
             .flatten()
             .collect()
@@ -176,22 +176,22 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let callback_params = self
+        let slot_params = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_type_name,
-                    callback_type,
+                let SlotProp {
+                    slot_type_name,
+                    slot_type,
                     ..
                 } = f;
 
-                quote! { #callback_type_name: #callback_type + Send + Sync }
+                quote! { #slot_type_name: #slot_type + Send + Sync + 'static }
             })
             .collect::<Vec<_>>();
 
-        vec![signal_params, callback_params]
+        vec![signal_params, slot_params]
             .into_iter()
             .flatten()
             .collect()
@@ -216,19 +216,17 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let callback_param_names = self
+        let slot_param_names = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_type_name, ..
-                } = f;
-                quote! { #callback_type_name }
+                let SlotProp { slot_type_name, .. } = f;
+                quote! { #slot_type_name }
             })
             .collect::<Vec<_>>();
 
-        vec![signal_param_names, callback_param_names]
+        vec![signal_param_names, slot_param_names]
             .into_iter()
             .flatten()
             .collect()
@@ -318,15 +316,15 @@ impl BuilderStruct {
         }
         }).collect::<Vec<_>>();
 
-        let builder_field_callback_setters = self.widget_struct.callbacks.iter().map(|f| {
-            let CallbackProp { callback_name, callback_type, callback_type_name, .. } = f;
+        let builder_field_slot_setters = self.widget_struct.slots.iter().map(|f| {
+            let SlotProp { slot_name, slot_type, slot_type_name, .. } = f;
 
-            let fn_name = callback_name;
+            let fn_name = slot_name;
 
             let builder_struct_generics_params_names_out = builder_struct_generics_params_names
                 .iter()
                 .map(|f| {
-                    if callback_type_name == f.to_string().as_str() {
+                    if slot_type_name == f.to_string().as_str() {
                         quote! { T }
                     } else {
                         quote! { #f }
@@ -335,7 +333,7 @@ impl BuilderStruct {
                 .collect::<Vec<_>>();
 
             let other_fields = all_member_names.iter().filter_map(|f| {
-                if f == callback_name {
+                if f == slot_name {
                     None
                 } else {
                     Some(quote! {#f: self.#f })
@@ -344,9 +342,9 @@ impl BuilderStruct {
 
             quote! {
             impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
-                pub fn #fn_name<T: #callback_type + Send + Sync>(self, value: T) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
+                pub fn #fn_name<T: #slot_type + Send + Sync>(self, value: T) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
                     #builder_name {
-                        #callback_name: Some(value),
+                        #slot_name: Some(value),
                         #(#other_fields),*
                     }
                 }
@@ -357,7 +355,7 @@ impl BuilderStruct {
         vec![
             builder_field_signal_setters,
             builder_field_value_setters,
-            builder_field_callback_setters,
+            builder_field_slot_setters,
         ]
         .into_iter()
         .flatten()
@@ -395,17 +393,17 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let real_struct_callback_members = self
+        let real_struct_slot_members = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_name,
-                    callback_type_name,
+                let SlotProp {
+                    slot_name,
+                    slot_type_name,
                     ..
                 } = f;
-                quote! { #callback_name: #callback_type_name }
+                quote! { #slot_name: #slot_type_name }
             })
             .collect::<Vec<_>>();
 
@@ -423,7 +421,7 @@ impl BuilderStruct {
 
         vec![
             real_struct_members,
-            real_struct_callback_members,
+            real_struct_slot_members,
             struct_fields_decl,
             signal_prop_value_members,
         ]
@@ -465,19 +463,19 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        let real_struct_member_callback_ctors = self
+        let real_struct_member_slot_ctors = self
             .widget_struct
-            .callbacks
+            .slots
             .iter()
             .map(|f| {
-                let CallbackProp {
-                    callback_name,
-                    callback_type_name: _,
-                    callback_type: _,
-                    callback_default: _,
+                let SlotProp {
+                    slot_name,
+                    slot_type_name: _,
+                    slot_type: _,
+                    slot_default: _,
                 } = f;
 
-                quote! { #callback_name: self.#callback_name.expect("missing callback")}
+                quote! { #slot_name: self.#slot_name.expect("missing slot")}
             })
             .collect::<Vec<_>>();
 
@@ -505,7 +503,7 @@ impl BuilderStruct {
 
         vec![
             real_struct_member_ctors,
-            real_struct_member_callback_ctors,
+            real_struct_member_slot_ctors,
             struct_fields_init,
             signal_prop_value_members_ctor,
         ]
@@ -526,7 +524,7 @@ impl BuilderStruct {
         });
 
         quote! {
-            fn poll_prop_futures<'a>(&'a self, ctx: &'a QuirkyAppContext) -> futures::stream::FuturesUnordered<futures::future::BoxFuture<'a, ()>> {
+            fn poll_prop_futures<'a>(&'a self, ctx: &'a quirky::quirky_app_context::QuirkyAppContext) -> futures::stream::FuturesUnordered<futures::future::BoxFuture<'a, ()>> {
                 let mut futs = futures::stream::FuturesUnordered::new();
 
                 for f in vec![#(#sig_gens),*] {
@@ -610,13 +608,13 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
         #(#field_setter)*
 
         impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
-            pub fn build(self) -> Arc<#struct_name<#(#builder_struct_generics_params_names),*>> {
-                Arc::new(#struct_name {
+            pub fn build(self) -> std::sync::Arc<dyn Widget + 'static> {
+                #struct_name {
                     id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
                     dirty: Default::default(),
                     #(#real_struct_member_inits),*
-                })
+                }.build()
             }
         }
 

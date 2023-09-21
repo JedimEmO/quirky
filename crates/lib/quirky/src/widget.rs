@@ -31,6 +31,13 @@ pub trait WidgetEventHandler {
 
 #[async_trait::async_trait]
 pub trait Widget: WidgetBase + Send + Sync {
+    fn build(self) -> Arc<dyn Widget + 'static>
+    where
+        Self: Sized + 'static,
+    {
+        Arc::new(self) as Arc<dyn Widget + 'static>
+    }
+
     fn children(&self) -> Option<Vec<Arc<dyn Widget>>> {
         None
     }

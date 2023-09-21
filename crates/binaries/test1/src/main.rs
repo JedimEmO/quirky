@@ -1,14 +1,15 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache};
+use glyphon::{FamilyOwned, FontSystem, Metrics, SwashCache};
 use lipsum::lipsum_words;
 use quirky::primitives::quad::Quads;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
 use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::widgets::button::ButtonBuilder;
 use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
-use quirky_widgets::widgets::label::LabelBuilder;
+use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};
 use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
@@ -82,6 +83,14 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                         LayoutItemBuilder::new()
                             .child(
                                 LabelBuilder::new()
+                                    .font_settings(FontSettings {
+                                        family: FamilyOwned::Monospace,
+                                        metrics: Metrics {
+                                            font_size: 15.0,
+                                            line_height: 16.0,
+                                        },
+                                        ..Default::default()
+                                    })
                                     .text_signal(clone!(text, move || text
                                         .signal_cloned()
                                         .map(|t| t.into())))
@@ -95,9 +104,20 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                                     .build(),
                             )
                             .build(),
-                        LayoutItemBuilder::new()
-                            .padding_signal(clone!(padding, move || padding.signal()))
-                            .child(SlabBuilder::new().build())
+                        ButtonBuilder::new()
+                            .content(
+                                LabelBuilder::new()
+                                    .font_settings(FontSettings {
+                                        family: FamilyOwned::Monospace,
+                                        metrics: Metrics {
+                                            font_size: 15.0,
+                                            line_height: 16.0,
+                                        },
+                                        ..Default::default()
+                                    })
+                                    .text("Click me 🌍".to_string().into())
+                                    .build(),
+                            )
                             .build(),
                         TextLayoutBuilder::new()
                             .text(lipsum_words(400).into())

@@ -52,7 +52,7 @@ impl<
             self.bounding_box().signal(),
             children.map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
             (self.padding)(),
-            layout_item_strategy,
+            single_child_layout_strategy,
         );
 
         let mut child_layouts_stream = child_layouts.to_stream();
@@ -65,7 +65,6 @@ impl<
             select! {
                 layouts = next_layouts => {
                     if let Some(layouts) = layouts {
-                        let _layout_lock = ctx.start_layout();
                         child_run_futs = FuturesUnordered::new();
 
                         layouts.iter().enumerate().for_each(|(_idx, l)| {
@@ -83,7 +82,7 @@ impl<
     }
 }
 
-fn layout_item_strategy(
+pub fn single_child_layout_strategy(
     container_box: &LayoutBox,
     child_constraints: &Vec<SizeConstraint>,
     padding: &Padding,

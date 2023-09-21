@@ -10,7 +10,6 @@ use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::widget::WidgetBase;
 use quirky::widget::{Event, Widget};
-use quirky::LayoutBox;
 use quirky::SizeConstraint;
 use quirky_macros::widget;
 use std::borrow::BorrowMut;
@@ -25,7 +24,7 @@ pub struct TextLayout {
     #[signal_prop]
     #[default("".into())]
     text: Arc<str>,
-    #[callback]
+    #[slot]
     on_event: Event,
     text_buffer: futures::lock::Mutex<Option<Buffer>>,
 }

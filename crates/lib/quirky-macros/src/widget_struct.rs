@@ -1,4 +1,4 @@
-use crate::props::{CallbackProp, FnSignalProp, Prop};
+use crate::props::{FnSignalProp, Prop, SlotProp};
 use proc_macro2::Ident;
 use syn::{Field, ItemStruct};
 
@@ -8,7 +8,7 @@ pub(crate) struct WidgetStructParsed {
     pub signal_props: Vec<FnSignalProp>,
     pub props: Vec<Prop>,
     pub plain_fields: Vec<Field>,
-    pub callbacks: Vec<CallbackProp>,
+    pub slots: Vec<SlotProp>,
 }
 
 impl From<ItemStruct> for WidgetStructParsed {
@@ -31,10 +31,10 @@ impl From<ItemStruct> for WidgetStructParsed {
             .cloned()
             .collect::<Vec<_>>();
 
-        let callbacks = struct_
+        let slots = struct_
             .fields
             .iter()
-            .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("callback")))
+            .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("slot")))
             .cloned()
             .collect::<Vec<_>>();
 
@@ -45,7 +45,7 @@ impl From<ItemStruct> for WidgetStructParsed {
                 !f.attrs.iter().any(|attr| {
                     attr.path().is_ident("signal_prop")
                         || attr.path().is_ident("prop")
-                        || attr.path().is_ident("callback")
+                        || attr.path().is_ident("slot")
                 })
             })
             .cloned()
@@ -56,7 +56,7 @@ impl From<ItemStruct> for WidgetStructParsed {
             signal_props: signal_props.into_iter().map(|v| v.into()).collect(),
             props: props.into_iter().map(|v| v.into()).collect(),
             plain_fields,
-            callbacks: callbacks.into_iter().map(|v| v.into()).collect(),
+            slots: slots.into_iter().map(|v| v.into()).collect(),
         }
     }
 }
