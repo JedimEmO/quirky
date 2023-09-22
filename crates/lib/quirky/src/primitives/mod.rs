@@ -1,6 +1,7 @@
 pub mod image;
 pub mod quad;
 pub mod text;
+pub mod vertex;
 
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};

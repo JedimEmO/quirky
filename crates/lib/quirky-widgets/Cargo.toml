@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 async-trait.workspace = true
 async-std.workspace = true
+bytemuck.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
 glam.workspace = true
@@ -16,3 +17,5 @@ image.workspace = true
 quirky = { path = "../quirky" }
 quirky-macros = { path = "../quirky-macros" }
 uuid.workspace = true
+wgpu.workspace = true
+wgpu_macros.workspace = true

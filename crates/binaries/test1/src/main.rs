@@ -38,6 +38,31 @@ async fn main() {
     quirky_winit_app.run();
 }
 
+fn button_row(text: Mutable<String>) -> Arc<dyn Widget> {
+    BoxLayoutBuilder::new()
+        .size_constraint(SizeConstraint::MaxHeight(30))
+        .child_direction(ChildDirection::Horizontal)
+        .children(vec![
+            ButtonBuilder::new()
+                .on_click(clone!(text, move |_| text.set("Cat".to_string())))
+                .content(LabelBuilder::new().text("🐈".into()).build())
+                .build(),
+            ButtonBuilder::new()
+                .on_click(clone!(text, move |_| text.set("Dog".to_string())))
+                .content(LabelBuilder::new().text("🐶".into()).build())
+                .build(),
+            ButtonBuilder::new()
+                .on_click(clone!(text, move |_| text.set("Cow".to_string())))
+                .content(LabelBuilder::new().text("C".into()).build())
+                .build(),
+            ButtonBuilder::new()
+                .on_click(clone!(text, move |_| text.set("Donkey".to_string())))
+                .content(LabelBuilder::new().text("D".into()).build())
+                .build(),
+        ])
+        .build()
+}
+
 fn simple_panel_layout() -> Arc<dyn Widget> {
     let click_count = Mutable::new(0);
     let padding = Mutable::new(Padding::default());
@@ -86,7 +111,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                                     .font_settings(FontSettings {
                                         family: FamilyOwned::Monospace,
                                         metrics: Metrics {
-                                            font_size: 15.0,
+                                            font_size: 20.0,
                                             line_height: 16.0,
                                         },
                                         ..Default::default()
@@ -97,14 +122,9 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                                     .build(),
                             )
                             .build(),
-                        LayoutItemBuilder::new()
-                            .child(
-                                SlabBuilder::new()
-                                    .size_constraint(SizeConstraint::MinSize(UVec2::new(100, 20)))
-                                    .build(),
-                            )
-                            .build(),
+                        button_row(text.clone()),
                         ButtonBuilder::new()
+                            .on_click(clone!(text, move |_| { text.set("".to_string()) }))
                             .content(
                                 LabelBuilder::new()
                                     .font_settings(FontSettings {
@@ -115,12 +135,19 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                                         },
                                         ..Default::default()
                                     })
-                                    .text("Click me 🌍".to_string().into())
+                                    .text("Clear 🌍".to_string().into())
                                     .build(),
                             )
                             .build(),
                         TextLayoutBuilder::new()
                             .text(lipsum_words(400).into())
+                            .build(),
+                        LayoutItemBuilder::new()
+                            .child(
+                                SlabBuilder::new()
+                                    .size_constraint(SizeConstraint::MinSize(UVec2::new(100, 20)))
+                                    .build(),
+                            )
                             .build(),
                     ])
                     .size_constraint(SizeConstraint::MaxWidth(300))

@@ -1,15 +1,16 @@
-use crate::widgets::layout_item::{single_child_layout_strategy, LayoutItemBuilder};
+use crate::primitives::button_primitive::{ButtonData, ButtonPrimitive};
+use crate::widgets::layout_item::single_child_layout_strategy;
 use async_trait::async_trait;
-use futures::stream::FuturesUnordered;
-use futures::{select, FutureExt, StreamExt};
-use futures_signals::signal::{always, Signal, SignalExt};
+use futures::{FutureExt, StreamExt};
+use futures_signals::signal::{always, Mutable, Signal, SignalExt};
 use glam::UVec2;
 use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::styling::Padding;
-use quirky::widget::{default_run, Widget, WidgetBase};
-use quirky::{clone, layout, MouseButton, SizeConstraint};
+use quirky::widget::{Widget, WidgetBase};
+use quirky::widgets::event_subscribe::run_subscribe_to_events;
+use quirky::{clone, layout, MouseButton, MouseEvent, SizeConstraint, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -17,6 +18,14 @@ use uuid::Uuid;
 #[derive(Copy, Clone)]
 pub struct ClickEvent {
     pub mouse_button: MouseButton,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
+pub enum ButtonState {
+    Hovered,
+    Pressed,
+    #[default]
+    Default,
 }
 
 #[widget]
@@ -28,6 +37,11 @@ pub struct Button {
     size_constraint: SizeConstraint,
     #[slot]
     on_click: ClickEvent,
+    #[slot]
+    on_button_state_change: ButtonState,
+    button_state: Mutable<ButtonState>,
+    #[default(Mutable::new(Default::default()))]
+    button_data: Mutable<ButtonData>,
 }
 
 #[async_trait]
@@ -36,7 +50,8 @@ impl<
         ContentSignalFn: Fn() -> ContentSignal + Send + Sync + 'static,
         SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
         SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
-        OnClickCallback: Fn(ClickEvent) -> () + Send + Sync,
+        OnClickCallback: Fn(ClickEvent) -> () + Send + Sync + 'static,
+        OnButtonStateChangeCallback: Fn(ButtonState) -> () + Send + Sync + 'static,
     > Widget
     for Button<
         ContentSignal,
@@ -44,6 +59,7 @@ impl<
         SizeConstraintSignal,
         SizeConstraintSignalFn,
         OnClickCallback,
+        OnButtonStateChangeCallback,
     >
 {
     fn build(self) -> Arc<dyn Widget> {
@@ -61,12 +77,10 @@ impl<
     ) -> Vec<Box<dyn DrawablePrimitive>> {
         let bb = self.bounding_box.get();
 
-        let quads = Box::new(Quads::new(
-            vec![Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0])],
-            &quirky_context.device,
-        ));
+        let button_primitive =
+            ButtonPrimitive::new(self.button_data.read_only(), &quirky_context.device);
 
-        vec![quads]
+        vec![Box::new(button_primitive)]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -85,7 +99,56 @@ impl<
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
-        let mut futs = self.poll_prop_futures(ctx);
+        let futs = self.poll_prop_futures(ctx);
+        let state_change_fut = self.button_state.signal().for_each(|data| {
+            let color = match data {
+                ButtonState::Default => [0.02, 0.02, 0.02, 1.0],
+                ButtonState::Hovered => [0.01, 0.01, 0.01, 1.0],
+                ButtonState::Pressed => [0.008, 0.008, 0.008, 0.8],
+            };
+
+            let mut data = self.button_data.get();
+            data.color = color;
+            self.button_data.set(data);
+
+            async move { ctx.signal_redraw().await }
+        });
+
+        let bb_change_fut = self.bounding_box.signal().for_each(|new_bb| {
+            let mut data = self.button_data.get();
+            data.pos = *new_bb.pos.as_vec2().as_ref();
+            data.size = *new_bb.size.as_vec2().as_ref();
+            self.button_data.set(data);
+
+            async move { ctx.signal_redraw().await }
+        });
+
+        let mut futs = run_subscribe_to_events(
+            futs,
+            self.clone(),
+            ctx,
+            clone!(self, move |widget_event| {
+                match widget_event.clone() {
+                    WidgetEvent::MouseEvent { event } => match event {
+                        MouseEvent::Move { .. } => {
+                            self.button_state.set(ButtonState::Hovered);
+                        }
+                        MouseEvent::ButtonDown { .. } => {
+                            self.button_state.set(ButtonState::Pressed);
+                        }
+                        MouseEvent::ButtonUp { button } => {
+                            self.button_state.set(ButtonState::Hovered);
+                            (self.on_click)(ClickEvent {
+                                mouse_button: button,
+                            })
+                        }
+                        _ => {
+                            self.button_state.set(ButtonState::Default);
+                        }
+                    },
+                }
+            }),
+        );
 
         let child_layouts = layout(
             self.bounding_box().signal(),
@@ -122,6 +185,8 @@ impl<
 
         futs.push(child_fut.boxed());
         futs.push(child_layouts.boxed());
+        futs.push(state_change_fut.boxed());
+        futs.push(bb_change_fut.boxed());
 
         loop {
             futs.next().await;

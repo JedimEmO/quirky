@@ -1933,6 +1933,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-trait",
+ "bytemuck",
  "futures",
  "futures-signals",
  "glam",
@@ -1941,6 +1942,8 @@ dependencies = [
  "quirky",
  "quirky-macros",
  "uuid",
+ "wgpu 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "wgpu_macros",
 ]
 
 [[package]]

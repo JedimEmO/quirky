@@ -1,19 +1,17 @@
-use async_std::task::sleep;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
-use futures_signals::signal::{always, Signal};
+use futures_signals::signal::Signal;
 use futures_signals::signal::{Mutable, SignalExt};
-use glam::{uvec2, UVec2};
-use image::{Rgba, RgbaImage};
-use quirky::primitives::image::ImagePrimitive;
+use glam::UVec2;
 use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::widget::{Event, Widget, WidgetBase};
+use quirky::widgets::event_subscribe::run_subscribe_to_events;
 use quirky::SizeConstraint;
-use quirky::{clone, MouseButton, MouseEvent, WidgetEvent};
+use quirky::{clone, MouseEvent, WidgetEvent};
 use quirky_macros::widget;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[widget]
@@ -121,8 +119,24 @@ impl<
             }
         });
 
-        let mut futs = self.poll_prop_futures(ctx);
+        let futs = self.poll_prop_futures(ctx);
 
+        let mut futs = run_subscribe_to_events(futs, self.clone(), ctx, |widget_event| {
+            match widget_event.clone() {
+                WidgetEvent::MouseEvent { event } => match event {
+                    MouseEvent::Move { .. } => {
+                        self.is_hovered.set(true);
+                    }
+                    MouseEvent::Leave {} => {
+                        self.is_hovered.set(false);
+                    }
+                    MouseEvent::ButtonDown { .. } => {
+                        (self.on_event)(Event { widget_event });
+                    }
+                    _ => {}
+                },
+            }
+        });
         futs.push(event_redraw.boxed());
         futs.push(hover_redraw.boxed());
 
