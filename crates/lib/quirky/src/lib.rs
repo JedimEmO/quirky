@@ -356,8 +356,6 @@ pub fn run_widgets<'a, 'b: 'a>(
     ctx: &'b QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
 ) -> impl Future<Output = ()> + 'a {
-    
-
     async move {
         let next_widgets_stream = widgets.signal_vec_cloned().to_signal_cloned().to_stream();
 

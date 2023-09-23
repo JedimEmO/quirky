@@ -1,4 +1,4 @@
-use crate::primitives::vertex::{Vertex, VERTICES};
+use crate::primitives::vertex::{Vertex, QUAD_INDEXES, QUAD_VERTICES};
 use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
 use glam::UVec2;
 use once_cell::sync::OnceCell;
@@ -12,8 +12,6 @@ use wgpu::{
 use wgpu_macros::VertexLayout;
 
 static QUAD_PIPELINE: OnceCell<Arc<RenderPipeline>> = OnceCell::new();
-
-pub const QUAD_INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
 #[repr(C)]
 #[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -69,7 +67,7 @@ impl Quads {
     pub fn new(geometry: Vec<Quad>, device: &Device) -> Self {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad index buffer"),
-            contents: bytemuck::cast_slice(&VERTICES),
+            contents: bytemuck::cast_slice(&QUAD_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
 

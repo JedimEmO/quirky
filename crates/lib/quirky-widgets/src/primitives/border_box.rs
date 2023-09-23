@@ -1,41 +1,34 @@
 use futures_signals::signal::ReadOnlyMutable;
-use quirky::primitives::vertex::QUAD_INDEXES;
-use quirky::primitives::vertex::{Vertex, QUAD_VERTICES};
+use quirky::primitives::vertex::QUAD_VERTICES;
+use quirky::primitives::vertex::{Vertex, QUAD_INDEXES};
 use quirky::primitives::{DrawablePrimitive, PrepareContext, RenderContext};
 use std::mem;
 use uuid::Uuid;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    include_wgsl, Device, PipelineLayoutDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    VertexState,
+    include_wgsl, Device, PipelineLayoutDescriptor, RenderPass, RenderPipeline,
+    RenderPipelineDescriptor, VertexState,
 };
 use wgpu_macros::VertexLayout;
 
-static BUTTON_PRIMITIVE_UUID: Uuid = Uuid::from_u128(0x2310e3e8_eda0_4321_96d5_44b4f42c24b0);
+const BORDER_BOX_PRIMITIVE_UUID: Uuid = Uuid::from_u128(0xe136d9b9_d64a_4932_8eb3_106b52e2537c);
 
 #[repr(C)]
 #[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
 #[layout(Instance)]
-pub struct ButtonData {
+pub struct BorderBoxData {
     pub pos: [f32; 2],
     pub size: [f32; 2],
     pub color: [f32; 4],
+    pub shade_color: [f32; 4],
+    pub border_side: u32,
+    pub borders: [u32; 4],
 }
 
-impl Default for ButtonData {
-    fn default() -> Self {
-        Self {
-            pos: [0.0, 0.0],
-            size: [0.0, 0.0],
-            color: [0.01, 0.02, 0.03, 1.0],
-        }
-    }
-}
-
-impl ButtonData {
+impl BorderBoxData {
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<ButtonData>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<BorderBoxData>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -53,22 +46,37 @@ impl ButtonData {
                     shader_location: 4,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<u32>() as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Uint32,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[u32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 7,
+                    format: wgpu::VertexFormat::Uint32x4,
+                },
             ],
         }
     }
 }
 
-pub struct ButtonPrimitive {
-    button_data: ReadOnlyMutable<ButtonData>,
+pub struct BorderBox {
+    data: ReadOnlyMutable<BorderBoxData>,
     index_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
 }
 
-impl ButtonPrimitive {
-    pub fn new(button_data: ReadOnlyMutable<ButtonData>, device: &Device) -> Self {
+impl BorderBox {
+    pub fn new(data: ReadOnlyMutable<BorderBoxData>, device: &Device) -> Self {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("button data vertex buffer"),
+            label: Some("BorderBox data vertex buffer"),
             contents: bytemuck::cast_slice(&QUAD_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
@@ -80,13 +88,13 @@ impl ButtonPrimitive {
         });
 
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("button data buffer"),
-            contents: bytemuck::cast_slice(&[button_data.get()]),
+            label: Some("BorderBox data buffer"),
+            contents: bytemuck::cast_slice(&[data.get()]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         Self {
-            button_data,
+            data,
             index_buffer,
             instance_buffer,
             vertex_buffer,
@@ -94,29 +102,29 @@ impl ButtonPrimitive {
     }
 }
 
-impl DrawablePrimitive for ButtonPrimitive {
-    fn prepare(&mut self, render_context: &mut PrepareContext) -> () {
-        if !render_context
+impl DrawablePrimitive for BorderBox {
+    fn prepare(&mut self, prepare_context: &mut PrepareContext) -> () {
+        if !prepare_context
             .pipeline_cache
-            .contains_key(&BUTTON_PRIMITIVE_UUID)
+            .contains_key(&BORDER_BOX_PRIMITIVE_UUID)
         {
-            render_context.pipeline_cache.insert(
-                BUTTON_PRIMITIVE_UUID,
-                create_button_pipeline(render_context),
+            prepare_context.pipeline_cache.insert(
+                BORDER_BOX_PRIMITIVE_UUID,
+                create_border_box_pipeline(prepare_context),
             );
         }
 
-        render_context.queue.write_buffer(
+        prepare_context.queue.write_buffer(
             &self.instance_buffer,
             0,
-            bytemuck::cast_slice(&[self.button_data.get()]),
+            bytemuck::cast_slice(&[self.data.get()]),
         )
     }
 
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
+    fn draw<'a>(&'a self, pass: &mut RenderPass<'a>, render_context: &RenderContext<'a>) {
         let pipeline = render_context
             .pipeline_cache
-            .get(&BUTTON_PRIMITIVE_UUID)
+            .get(&BORDER_BOX_PRIMITIVE_UUID)
             .unwrap();
 
         pass.set_pipeline(pipeline);
@@ -128,7 +136,7 @@ impl DrawablePrimitive for ButtonPrimitive {
     }
 }
 
-fn create_button_pipeline(render_context: &PrepareContext) -> RenderPipeline {
+fn create_border_box_pipeline(render_context: &PrepareContext) -> RenderPipeline {
     let pipeline_layout = render_context
         .device
         .create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -139,7 +147,7 @@ fn create_button_pipeline(render_context: &PrepareContext) -> RenderPipeline {
 
     let shader = render_context
         .device
-        .create_shader_module(include_wgsl!("shaders/button.wgsl"));
+        .create_shader_module(include_wgsl!("shaders/border_box.wgsl"));
 
     render_context
         .device
@@ -149,7 +157,7 @@ fn create_button_pipeline(render_context: &PrepareContext) -> RenderPipeline {
             vertex: VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::LAYOUT, ButtonData::layout()],
+                buffers: &[Vertex::LAYOUT, BorderBoxData::layout()],
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,

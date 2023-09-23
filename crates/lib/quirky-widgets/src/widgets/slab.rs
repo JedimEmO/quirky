@@ -1,3 +1,4 @@
+use crate::primitives::border_box::{BorderBox, BorderBoxData};
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::Signal;
@@ -68,7 +69,18 @@ impl<
             &ctx.device,
         ));
 
-        vec![quads]
+        let data = Mutable::new(BorderBoxData {
+            pos: *bb.pos.as_vec2().as_ref(),
+            size: *bb.size.as_vec2().as_ref(),
+            color: [0.02, 0.02, 0.02, 1.0],
+            shade_color: [0.02, 0.02, 0.02, 1.0],
+            border_side: 0,
+            borders: [1, 1, 1, 1],
+        });
+
+        let border_box = Box::new(BorderBox::new(data.read_only(), &ctx.device));
+
+        vec![quads, border_box]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {

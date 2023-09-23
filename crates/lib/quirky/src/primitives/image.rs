@@ -253,7 +253,9 @@ fn ensure_pipeline(
     render_context: &mut PrepareContext,
     texture_bind_group_layout: &BindGroupLayout,
 ) {
-    if let std::collections::hash_map::Entry::Vacant(e) = render_context.pipeline_cache.entry(PRIMITIVE_UUID) {
+    if let std::collections::hash_map::Entry::Vacant(e) =
+        render_context.pipeline_cache.entry(PRIMITIVE_UUID)
+    {
         let render_pipeline_layout =
             render_context
                 .device

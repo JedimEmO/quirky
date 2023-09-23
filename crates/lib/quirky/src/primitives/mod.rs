@@ -38,6 +38,6 @@ pub trait Primitive {
 }
 
 pub trait DrawablePrimitive: Send + Sync {
-    fn prepare(&mut self, _render_context: &mut PrepareContext) {}
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, ctx: &RenderContext<'a>);
+    fn prepare(&mut self, _prepare_context: &mut PrepareContext) {}
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>);
 }
