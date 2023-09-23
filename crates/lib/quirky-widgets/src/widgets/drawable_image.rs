@@ -27,7 +27,7 @@ impl Widget for DrawableImage {
     ) -> Vec<Box<dyn DrawablePrimitive>> {
         let bb = self.bounding_box.get();
 
-        let mut image = self.image.get_cloned();
+        let image = self.image.get_cloned();
 
         let tex = ImagePrimitive {
             data: image,
@@ -60,8 +60,6 @@ impl Widget for DrawableImage {
             clone!(
                 mouse_pos,
                 clone!(self, async move {
-                    let ec = e.clone();
-
                     match e {
                         WidgetEvent::MouseEvent { event } => match event {
                             MouseEvent::ButtonDown { button } => {
@@ -70,7 +68,7 @@ impl Widget for DrawableImage {
                                 }
                             }
                             MouseEvent::Move { pos } => mouse_pos.set(pos),
-                            MouseEvent::Drag { from, to, button } => {
+                            MouseEvent::Drag { button, .. } => {
                                 if button != MouseButton::Middle {
                                     let mut image = self.image.lock_mut();
                                     let bb = self.bounding_box.get();

@@ -2,13 +2,13 @@ use crate::widgets::run_widget_with_children::run_widget_with_children;
 use async_trait::async_trait;
 use futures::FutureExt;
 use futures_signals::map_ref;
+use futures_signals::signal::Signal;
 use futures_signals::signal::SignalExt;
-use futures_signals::signal::{Mutable, Signal};
 use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::styling::Padding;
-use quirky::widget::{Widget, WidgetBase};
+use quirky::widget::Widget;
 use quirky::{LayoutBox, SizeConstraint};
 use quirky_macros::widget;
 use std::sync::Arc;
@@ -259,8 +259,9 @@ fn box_layout_strategy(
 
 #[cfg(test)]
 mod test {
+    use crate::widgets::box_layout::BoxLayoutBuilder;
     use futures_signals::signal::Mutable;
-    use quirky_widgets::widgets::box_layout::BoxLayoutBuilder;
+    use quirky::{clone, SizeConstraint};
 
     #[test]
     fn box_layout_usage() {

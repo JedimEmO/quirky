@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::{select, StreamExt};
-use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+use futures_signals::signal::{always, Signal, SignalExt};
 use glam::{IVec2, UVec2};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::styling::Padding;
@@ -135,11 +135,11 @@ pub fn single_child_layout_strategy(
                 size: IVec2::new(width, height).as_uvec2(),
             }
         }
-        SizeConstraint::MaxHeight(max_height) => LayoutBox {
+        SizeConstraint::MaxHeight(..) => LayoutBox {
             pos: top_left,
             size,
         },
-        SizeConstraint::MaxWidth(max_width) => LayoutBox {
+        SizeConstraint::MaxWidth(..) => LayoutBox {
             pos: top_left,
             size,
         },

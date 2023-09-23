@@ -64,7 +64,6 @@ fn button_row(text: Mutable<String>) -> Arc<dyn Widget> {
 }
 
 fn simple_panel_layout() -> Arc<dyn Widget> {
-    let click_count = Mutable::new(0);
     let padding = Mutable::new(Padding::default());
     let text = Mutable::new("hello, world!".to_string());
 
@@ -96,7 +95,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                             .on_event(clone!(text, move |e| {
                                 match e.widget_event {
                                     WidgetEvent::MouseEvent { event } => match event {
-                                        MouseEvent::ButtonDown { button } => {
+                                        MouseEvent::ButtonDown { .. } => {
                                             text.set(format!("{}!", text.get_cloned()));
                                         }
                                         _ => {}

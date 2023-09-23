@@ -98,7 +98,7 @@ impl DrawablePrimitive for Quads {
     fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
         if let Some(pipeline) = QUAD_PIPELINE.get() {
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &render_context.camera_bind_group, &[]);
+            pass.set_bind_group(0, render_context.camera_bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);

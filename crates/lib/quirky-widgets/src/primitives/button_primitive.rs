@@ -1,6 +1,4 @@
-use crate::widgets::button::ButtonState;
 use futures_signals::signal::ReadOnlyMutable;
-use glam::UVec2;
 use quirky::primitives::quad::QUAD_INDEXES;
 use quirky::primitives::vertex::{Vertex, VERTICES};
 use quirky::primitives::{DrawablePrimitive, PrepareContext, RenderContext};

@@ -38,8 +38,11 @@ fn vs_main(vert: VertexInput, q: ButtonData) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let centered = in.quad_pos - vec2<f32>(0.5, 0.5);
-    let distance = max(length(centered), 0.3);
-    let factor = distance;
+
+    let closeness_to_edge_x = pow(abs(centered.x) * 2.0, 2.0);
+    let closeness_to_edge_y = pow(abs(centered.y) * 2.0, 2.0);
+    let distance = max(closeness_to_edge_x, closeness_to_edge_y);
+    let factor = 1.0 - max(distance - 0.6, 0.0);
 
     let r = in.color.x;
     let g = in.color.y;

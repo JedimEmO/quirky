@@ -290,7 +290,7 @@ impl QuirkyApp {
                 });
 
                 let render_context = RenderContext {
-                    text_atlas: &*text_atlas,
+                    text_atlas: &text_atlas,
                     camera_bind_group: &self.camera_bind_group,
                     screen_resolution,
                     pipeline_cache: &pipeline_cache,
@@ -356,7 +356,9 @@ pub fn run_widgets<'a, 'b: 'a>(
     ctx: &'b QuirkyAppContext,
     widgets: MutableVec<Arc<dyn Widget>>,
 ) -> impl Future<Output = ()> + 'a {
-    let runner_fut = async move {
+    
+
+    async move {
         let next_widgets_stream = widgets.signal_vec_cloned().to_signal_cloned().to_stream();
 
         let mut next_widgets_stream = next_widgets_stream.map(move |v| {
@@ -385,9 +387,7 @@ pub fn run_widgets<'a, 'b: 'a>(
                 }
             }
         }
-    };
-
-    runner_fut
+    }
 }
 
 fn next_drawable_list(
@@ -400,12 +400,10 @@ fn next_drawable_list(
     let widget_primitives = if widget.dirty().get() {
         widget.clear_dirty();
         vec![(widget_id, widget.paint(ctx, paint_ctx))]
+    } else if let Some(old_index) = old_list.iter().position(|v| v.0 == widget_id) {
+        vec![old_list.remove(old_index)]
     } else {
-        if let Some(old_index) = old_list.iter().position(|v| v.0 == widget_id) {
-            vec![old_list.remove(old_index)]
-        } else {
-            vec![]
-        }
+        vec![]
     };
 
     let child_primitives = widget
@@ -413,8 +411,7 @@ fn next_drawable_list(
         .map(|children| {
             children
                 .iter()
-                .map(|child| next_drawable_list(child, old_list, ctx, paint_ctx))
-                .flatten()
+                .flat_map(|child| next_drawable_list(child, old_list, ctx, paint_ctx))
                 .collect::<Vec<_>>()
         })
         .or(Some(vec![]))
@@ -469,7 +466,7 @@ pub fn layout<TExtras: Send>(
 
 impl QuirkyApp {
     pub fn get_widgets_at(&self, pos: UVec2) -> Option<Vec<Uuid>> {
-        return self.widget.get_widget_at(pos, vec![]);
+        self.widget.get_widget_at(pos, vec![])
     }
 
     pub fn dispatch_event_to_widget(&self, target: Uuid, event: WidgetEvent) {
@@ -491,60 +488,4 @@ macro_rules! assert_f32_eq {
             );
         }
     }};
-}
-
-#[cfg(test)]
-mod t {
-    use crate::quirky_app_context::QuirkyAppContext;
-    use crate::run_widgets;
-    use crate::widget::Widget;
-    use futures_signals::signal_vec::MutableVec;
-    use quirky_widgets::widgets::slab::SlabBuilder;
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
-    use tokio::time::sleep;
-    use wgpu::{DownlevelCapabilities, Features, Limits};
-    use wgpu_test::{initialize_test, TestParameters};
-
-    #[tokio::test]
-    async fn test_run_widgets() {
-        let device = Arc::new(Mutex::new(None));
-
-        clone!(
-            device,
-            initialize_test(
-                TestParameters {
-                    failures: vec![],
-                    required_downlevel_properties: DownlevelCapabilities::default(),
-                    required_limits: Limits::default(),
-                    required_features: Features::default()
-                },
-                |ctx| {
-                    let _ = device.lock().unwrap().insert(Some(ctx));
-                }
-            )
-        );
-
-        let ctx = Box::leak(Box::new(
-            device.lock().unwrap().take().unwrap().take().unwrap(),
-        ));
-
-        let widget: Arc<dyn Widget> = SlabBuilder::new().build();
-        let widget2: Arc<dyn Widget> = SlabBuilder::new().build();
-
-        let widgets = MutableVec::new_with_values(vec![widget.clone()]);
-        let qctx = Box::leak(Box::new(QuirkyAppContext::new()));
-        let (drawables, fut) = run_widgets(qctx, widgets.clone(), &ctx.device);
-
-        let _j = tokio::spawn(fut);
-
-        sleep(Duration::from_millis(100)).await;
-        assert_eq!(drawables.lock_ref().len(), 1);
-
-        widgets.lock_mut().push_cloned(widget2.clone());
-
-        sleep(Duration::from_millis(100)).await;
-
-        assert_eq!(drawables.lock_ref().len(), 2);
-    }
 }

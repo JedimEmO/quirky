@@ -5,8 +5,7 @@ use std::mem;
 use uuid::Uuid;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    include_wgsl, BindGroupLayout, Buffer, RenderPass, RenderPipeline, TextureDimension,
-    TextureFormat, VertexState,
+    include_wgsl, BindGroupLayout, Buffer, RenderPass, TextureDimension, TextureFormat, VertexState,
 };
 use wgpu_macros::VertexLayout;
 
@@ -84,7 +83,7 @@ pub struct ImagePrimitive {
 }
 
 impl DrawablePrimitive for ImagePrimitive {
-    fn prepare(&mut self, render_context: &mut PrepareContext) -> () {
+    fn prepare(&mut self, render_context: &mut PrepareContext) {
         let dimensions = self.data.dimensions();
 
         let texture_size = wgpu::Extent3d {
@@ -250,19 +249,19 @@ impl ImagePrimitive {
     }
 }
 
-fn ensure_pipeline<'a>(
-    render_context: &'a mut PrepareContext,
+fn ensure_pipeline(
+    render_context: &mut PrepareContext,
     texture_bind_group_layout: &BindGroupLayout,
 ) {
-    if !render_context.pipeline_cache.contains_key(&PRIMITIVE_UUID) {
+    if let std::collections::hash_map::Entry::Vacant(e) = render_context.pipeline_cache.entry(PRIMITIVE_UUID) {
         let render_pipeline_layout =
             render_context
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        &render_context.camera_bind_group_layout,
-                        &texture_bind_group_layout,
+                        (render_context.camera_bind_group_layout),
+                        texture_bind_group_layout,
                     ], // NEW!
                     push_constant_ranges: &[],
                 });
@@ -306,8 +305,6 @@ fn ensure_pipeline<'a>(
                     multiview: None,
                 });
 
-        render_context
-            .pipeline_cache
-            .insert(PRIMITIVE_UUID, pipeline);
+        e.insert(pipeline);
     }
 }

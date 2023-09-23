@@ -148,8 +148,8 @@ impl<
 
 #[cfg(test)]
 mod test {
+    use crate::widgets::slab::SlabBuilder;
     use futures_signals::signal::always;
-    use quirky_widgets::widgets::slab::SlabBuilder;
 
     #[test]
     fn slab_builder_test() {

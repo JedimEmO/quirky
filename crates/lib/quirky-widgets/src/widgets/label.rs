@@ -6,10 +6,8 @@ use glyphon::{
     Attrs, Buffer, Color, FamilyOwned, Metrics, Resolution, Shaping, Stretch, Style, TextArea,
     TextBounds, TextRenderer, Weight,
 };
-use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
-use quirky::widget::WidgetBase;
 use quirky::widget::{default_run, Widget};
 use quirky::SizeConstraint;
 use quirky_macros::widget;

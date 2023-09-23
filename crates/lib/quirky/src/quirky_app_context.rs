@@ -77,7 +77,7 @@ impl QuirkyAppContext {
         rx
     }
 
-    pub fn unsubscribe_from_widget_events(&self, widget_id: Uuid) {}
+    pub fn unsubscribe_from_widget_events(&self, _widget_id: Uuid) {}
 
     pub fn start_layout(&self) -> LayoutToken {
         LayoutToken::new(self.layouts_in_progress.clone())

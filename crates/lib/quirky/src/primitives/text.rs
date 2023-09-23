@@ -1,4 +1,4 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext, RenderContext};
+use crate::primitives::{DrawablePrimitive, RenderContext};
 use glyphon::TextRenderer;
 use wgpu::RenderPass;
 

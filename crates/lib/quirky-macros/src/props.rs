@@ -1,36 +1,7 @@
 use convert_case::{Case, Casing};
-use proc_macro2::{Ident, Span};
+use proc_macro2::Ident;
 use quote::quote;
-use syn::spanned::Spanned;
 use syn::{Expr, Field, Type, TypeParamBound};
-
-#[derive(Clone)]
-pub(crate) struct Prop {
-    pub field_name: Ident,
-    pub field_type: Type,
-    pub default: Option<Expr>,
-    pub span: Span,
-}
-
-impl From<Field> for Prop {
-    fn from(f: Field) -> Self {
-        let attrs = f.attrs.clone();
-
-        let default = if let Some(d) = attrs.iter().find(|a| a.path().is_ident("default")) {
-            let expr = d.parse_args().expect("field default parse error");
-            Some(expr)
-        } else {
-            None
-        };
-
-        Self {
-            field_name: f.ident.clone().expect("prop missing ident"),
-            field_type: f.ty.clone(),
-            default,
-            span: f.span().clone(),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct FnSignalProp {
@@ -40,7 +11,6 @@ pub(crate) struct FnSignalProp {
     pub signal_type: Type,
     pub signal_fn_name: Ident,
     pub default: Option<Expr>,
-    pub span: Span,
 }
 
 impl From<Field> for FnSignalProp {
@@ -80,7 +50,6 @@ impl From<Field> for FnSignalProp {
             signal_type,
             signal_fn_name,
             default,
-            span: f.span(),
         }
     }
 }

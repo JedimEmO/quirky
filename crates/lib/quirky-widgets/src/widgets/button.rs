@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
 use glam::UVec2;
-use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::styling::Padding;
@@ -75,8 +74,6 @@ impl<
         quirky_context: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,
     ) -> Vec<Box<dyn DrawablePrimitive>> {
-        let bb = self.bounding_box.get();
-
         let button_primitive =
             ButtonPrimitive::new(self.button_data.read_only(), &quirky_context.device);
 
@@ -102,9 +99,9 @@ impl<
         let futs = self.poll_prop_futures(ctx);
         let state_change_fut = self.button_state.signal().for_each(|data| {
             let color = match data {
-                ButtonState::Default => [0.02, 0.02, 0.02, 1.0],
-                ButtonState::Hovered => [0.01, 0.01, 0.01, 1.0],
-                ButtonState::Pressed => [0.008, 0.008, 0.008, 0.8],
+                ButtonState::Default => [0.03, 0.03, 0.03, 1.0],
+                ButtonState::Hovered => [0.02, 0.02, 0.02, 1.0],
+                ButtonState::Pressed => [0.01, 0.01, 0.01, 0.8],
             };
 
             let mut data = self.button_data.get();
@@ -156,10 +153,10 @@ impl<
                 .signal_cloned()
                 .map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
             always(Padding {
-                left: 10,
-                right: 10,
-                top: 5,
-                bottom: 5,
+                left: 3,
+                right: 3,
+                top: 3,
+                bottom: 3,
             }),
             single_child_layout_strategy,
         )

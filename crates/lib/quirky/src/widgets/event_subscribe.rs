@@ -7,10 +7,10 @@ use futures::{FutureExt, StreamExt};
 use std::sync::Arc;
 
 pub fn run_subscribe_to_events<'a>(
-    mut futs: FuturesUnordered<BoxFuture<'a, ()>>,
+    futs: FuturesUnordered<BoxFuture<'a, ()>>,
     widget: Arc<dyn Widget>,
     quirky_context: &'a QuirkyAppContext,
-    event_handler: impl Fn(WidgetEvent) -> () + Send + 'a,
+    event_handler: impl Fn(WidgetEvent) + Send + 'a,
 ) -> FuturesUnordered<BoxFuture<'a, ()>> {
     let mut widget_events = quirky_context
         .subscribe_to_widget_events(widget.id())

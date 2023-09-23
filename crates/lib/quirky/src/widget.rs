@@ -17,8 +17,8 @@ pub trait WidgetBase {
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;
     fn set_bounding_box(&self, new_box: LayoutBox);
     fn dirty(&self) -> ReadOnlyMutable<bool>;
-    fn set_dirty(&self) -> ();
-    fn clear_dirty(&self) -> ();
+    fn set_dirty(&self);
+    fn clear_dirty(&self);
     fn poll_prop_futures<'a>(
         &'a self,
         ctx: &'a QuirkyAppContext,
