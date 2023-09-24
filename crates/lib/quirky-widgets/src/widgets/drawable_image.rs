@@ -95,6 +95,7 @@ impl Widget for DrawableImage {
                             }
                             _ => {}
                         },
+                        _ => {}
                     }
                 })
             )

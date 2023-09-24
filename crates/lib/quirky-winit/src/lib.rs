@@ -1,7 +1,10 @@
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
-use quirky::{MouseButton, MouseEvent, QuirkyApp, WidgetEvent};
+use quirky::{
+    KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, QuirkyApp, WidgetEvent,
+};
+use std::os::unix::raw::ino_t;
 use std::sync::Arc;
 use uuid::Uuid;
 use wgpu::{
@@ -9,7 +12,7 @@ use wgpu::{
     TextureFormat,
 };
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, Event, WindowEvent};
+use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
@@ -107,6 +110,7 @@ impl QuirkyWinitApp {
         let mut target_widget: Option<Uuid> = None;
         let mut prev_drag_pos: Option<UVec2> = None;
         let mut drag_button: Option<MouseButton> = None;
+        let mut modifiers = KeyboardModifier::default();
 
         event_loop.run(move |event, _target, control_flow: &mut ControlFlow| {
             *control_flow = ControlFlow::Wait;
@@ -119,6 +123,32 @@ impl QuirkyWinitApp {
                     let _ = self.quirky_app.draw(&self.surface);
                 }
                 Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::ModifiersChanged(state) => {
+                        modifiers.alt = state.alt();
+                        modifiers.shift = state.shift();
+                        modifiers.ctrl = state.ctrl();
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if input.state == ElementState::Pressed {
+                            let target = prev_hovered.or(Some(Uuid::nil())).unwrap();
+
+                            let code = input
+                                .virtual_keycode
+                                .map(|code| winit_keycode_to_quirky(code))
+                                .or(Some(KeyCode::Unknown))
+                                .unwrap();
+
+                            self.quirky_app.dispatch_event_to_widget(
+                                target,
+                                WidgetEvent::KeyboardEvent {
+                                    event: KeyboardEvent::KeyPressed {
+                                        key_code: code,
+                                        modifier: modifiers.clone(),
+                                    },
+                                },
+                            )
+                        }
+                    }
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     WindowEvent::MouseInput { state, button, .. } => {
@@ -237,5 +267,59 @@ impl QuirkyWinitApp {
                 .viewport_size
                 .set(UVec2::new(new_size.width, new_size.height));
         }
+    }
+}
+fn winit_keycode_to_quirky(keycode: VirtualKeyCode) -> KeyCode {
+    match keycode {
+        VirtualKeyCode::Key1 => KeyCode::Key1,
+        VirtualKeyCode::Key2 => KeyCode::Key2,
+        VirtualKeyCode::Key3 => KeyCode::Key3,
+        VirtualKeyCode::Key4 => KeyCode::Key4,
+        VirtualKeyCode::Key5 => KeyCode::Key5,
+        VirtualKeyCode::Key6 => KeyCode::Key6,
+        VirtualKeyCode::Key7 => KeyCode::Key7,
+        VirtualKeyCode::Key8 => KeyCode::Key8,
+        VirtualKeyCode::Key9 => KeyCode::Key9,
+        VirtualKeyCode::Key0 => KeyCode::Key0,
+        VirtualKeyCode::A => KeyCode::A,
+        VirtualKeyCode::B => KeyCode::B,
+        VirtualKeyCode::C => KeyCode::C,
+        VirtualKeyCode::D => KeyCode::D,
+        VirtualKeyCode::E => KeyCode::E,
+        VirtualKeyCode::F => KeyCode::F,
+        VirtualKeyCode::G => KeyCode::G,
+        VirtualKeyCode::H => KeyCode::H,
+        VirtualKeyCode::I => KeyCode::I,
+        VirtualKeyCode::J => KeyCode::J,
+        VirtualKeyCode::K => KeyCode::K,
+        VirtualKeyCode::L => KeyCode::L,
+        VirtualKeyCode::M => KeyCode::M,
+        VirtualKeyCode::N => KeyCode::N,
+        VirtualKeyCode::O => KeyCode::O,
+        VirtualKeyCode::P => KeyCode::P,
+        VirtualKeyCode::Q => KeyCode::Q,
+        VirtualKeyCode::R => KeyCode::R,
+        VirtualKeyCode::S => KeyCode::S,
+        VirtualKeyCode::T => KeyCode::T,
+        VirtualKeyCode::U => KeyCode::U,
+        VirtualKeyCode::V => KeyCode::V,
+        VirtualKeyCode::W => KeyCode::W,
+        VirtualKeyCode::X => KeyCode::X,
+        VirtualKeyCode::Y => KeyCode::Y,
+        VirtualKeyCode::Z => KeyCode::Z,
+        VirtualKeyCode::Escape => KeyCode::Escape,
+        VirtualKeyCode::Back => KeyCode::Backspace,
+        VirtualKeyCode::Return => KeyCode::Return,
+        VirtualKeyCode::Space => KeyCode::Space,
+        VirtualKeyCode::Comma => KeyCode::Comma,
+        VirtualKeyCode::Grave => KeyCode::Grave,
+        VirtualKeyCode::Period => KeyCode::Period,
+        VirtualKeyCode::Caret => KeyCode::Caret,
+        VirtualKeyCode::Asterisk => KeyCode::Asterisk,
+        VirtualKeyCode::Backslash => KeyCode::Backslash,
+        VirtualKeyCode::Semicolon => KeyCode::Semicolon,
+        VirtualKeyCode::Slash => KeyCode::Slash,
+        VirtualKeyCode::At => KeyCode::Slash,
+        _ => KeyCode::Unknown,
     }
 }

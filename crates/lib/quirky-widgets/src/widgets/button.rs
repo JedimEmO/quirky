@@ -143,6 +143,7 @@ impl<
                             self.button_state.set(ButtonState::Default);
                         }
                     },
+                    _ => {}
                 }
             }),
         );

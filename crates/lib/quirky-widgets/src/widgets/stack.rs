@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::SignalExt;
 use quirky::quirky_app_context::QuirkyAppContext;

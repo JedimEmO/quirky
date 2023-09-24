@@ -5,7 +5,6 @@ use lipsum::lipsum_words;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
-use quirky_widgets::primitives::border_box::BorderBox;
 use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky_widgets::widgets::button::ButtonBuilder;
 use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
@@ -13,6 +12,7 @@ use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};
 use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_widgets::widgets::stack::StackBuilder;
+use quirky_widgets::widgets::text_input::TextInputBuilder;
 use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
 use quirky_winit::QuirkyWinitApp;
 use rand::random;
@@ -75,9 +75,15 @@ fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
                             }
                             _ => {}
                         },
+
+                        _ => {}
                     }
                 }))
                 .color([0.01, 0.01, 0.1, 0.2])
+                .build(),
+            TextInputBuilder::new()
+                .text_value_signal(clone!(text, move || text.signal_cloned()))
+                .on_text_change(clone!(text, move |v| { text.set(v.to_string()) }))
                 .build(),
         ])
         .build()

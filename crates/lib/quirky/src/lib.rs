@@ -5,6 +5,7 @@ mod ui_camera;
 pub mod view_tree;
 pub mod widget;
 pub mod widgets;
+
 use crate::primitives::{DrawablePrimitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
@@ -78,6 +79,140 @@ pub enum MouseButton {
     Num(usize),
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
+#[repr(u32)]
+pub enum KeyCode {
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    Key0,
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+    Escape,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+    F13,
+    F14,
+    F15,
+    F16,
+    F17,
+    F18,
+    F19,
+    F20,
+    F21,
+    F22,
+    F23,
+    F24,
+    Snapshot,
+    Scroll,
+    Pause,
+    Insert,
+    Home,
+    Delete,
+    End,
+    PageDown,
+    PageUp,
+    Left,
+    Up,
+    Right,
+    Down,
+    Backspace,
+    Return,
+    Space,
+    Compose,
+    Caret,
+    NumLock,
+    Numpad0,
+    Numpad1,
+    Numpad2,
+    Numpad3,
+    Numpad4,
+    Numpad5,
+    Numpad6,
+    Numpad7,
+    Numpad8,
+    Numpad9,
+    NumpadAdd,
+    NumpadDivide,
+    NumpadDecimal,
+    NumpadComma,
+    NumpadEnter,
+    NumpadEquals,
+    NumpadMultiply,
+    NumpadSubtract,
+    Apostrophe,
+    Apps,
+    Asterisk,
+    Backslash,
+    Calculator,
+    Capital,
+    Colon,
+    Comma,
+    Period,
+    Convert,
+    Equals,
+    Grave,
+    Semicolon,
+    Slash,
+    At,
+    Unknown,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct KeyboardModifier {
+    pub alt: bool,
+    pub shift: bool,
+    pub ctrl: bool,
+}
+
+#[derive(Clone)]
+pub enum KeyboardEvent {
+    KeyPressed {
+        key_code: KeyCode,
+        modifier: KeyboardModifier,
+    },
+}
+
 #[derive(Clone)]
 pub enum MouseEvent {
     Enter {
@@ -102,6 +237,7 @@ pub enum MouseEvent {
 
 #[derive(Clone)]
 pub enum WidgetEvent {
+    KeyboardEvent { event: KeyboardEvent },
     MouseEvent { event: MouseEvent },
 }
 
