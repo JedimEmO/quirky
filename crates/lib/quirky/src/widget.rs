@@ -55,7 +55,17 @@ pub trait Widget: WidgetBase + Send + Sync {
     }
 
     fn get_widget_at(&self, _pos: UVec2, _path: Vec<Uuid>) -> Option<Vec<Uuid>> {
-        None
+        self.children()
+            .map(|children| {
+                for child in children.iter().rev() {
+                    if let Some(hit) = child.get_widget_at(_pos, _path.clone()) {
+                        return Some(hit);
+                    }
+                }
+
+                None
+            })
+            .flatten()
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext);

@@ -23,5 +23,6 @@ members = [
     "crates/lib/quirky",
     "crates/lib/quirky-winit",
     "crates/lib/quirky-macros",
+    "crates/lib/quirky-utils",
     "crates/lib/quirky-widgets",
 ]

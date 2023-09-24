@@ -15,9 +15,10 @@ futures.workspace = true
 futures-signals.workspace = true
 futures-signals-utils.workspace = true
 image.workspace = true
-quirky-macros = { path = "../quirky-macros" }
 glam.workspace = true
 glyphon.workspace = true
+quirky-macros = { path = "../quirky-macros" }
+quirky-utils = { path = "../quirky-utils" }
 uuid.workspace = true
 wgpu.workspace = true
 wgpu_macros.workspace = true

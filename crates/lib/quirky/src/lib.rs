@@ -5,28 +5,34 @@ mod ui_camera;
 pub mod view_tree;
 pub mod widget;
 pub mod widgets;
-
 use crate::primitives::{DrawablePrimitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
 use async_std::task::{block_on, sleep};
+use futures::future::BoxFuture;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::{Future, FutureExt};
 use futures_signals::map_ref;
 use futures_signals::signal::{Mutable, Signal, SignalExt};
-use futures_signals::signal_vec::MutableVec;
-use futures_signals::signal_vec::SignalVecExt;
+use futures_signals::signal_map::MutableBTreeMap;
+use futures_signals::signal_vec::MutableVecLockMut;
+use futures_signals::signal_vec::{MutableVec, SignalVec};
+use futures_signals::signal_vec::{SignalVecExt, VecDiff};
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
 use primitives::PrepareContext;
 use quirky_app_context::QuirkyAppContext;
+use quirky_utils::futures_map_poll::FuturesMapPoll;
 use std::borrow::BorrowMut;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::iter;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use uuid::Uuid;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -163,7 +169,7 @@ impl QuirkyApp {
 
     pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {
         let widgets = MutableVec::new_with_values(vec![self.widget.clone()]);
-        let fut = run_widgets(&self.context, widgets);
+        let fut = run_widgets(&self.context, widgets.signal_vec_cloned());
 
         let mut run_futs = FuturesUnordered::new();
 
@@ -344,38 +350,54 @@ impl QuirkyApp {
     }
 }
 
-pub fn run_widgets<'a, 'b: 'a>(
-    ctx: &'b QuirkyAppContext,
-    widgets: MutableVec<Arc<dyn Widget>>,
+pub fn run_widgets<'a>(
+    ctx: &'a QuirkyAppContext,
+    widgets_signal: impl SignalVec<Item = Arc<dyn Widget>> + Send + 'a,
 ) -> impl Future<Output = ()> + 'a {
+    let widgets = MutableVec::new();
+    let (widgets_futures_map, data) = FuturesMapPoll::new();
+
+    let mut widgets_fut = widgets_signal.for_each(clone!(
+        data,
+        clone!(widgets, move |change: VecDiff<Arc<dyn Widget>>| {
+            let mut widgets_lock = widgets.lock_mut();
+            let mut widgets_futures_lock = data.lock().unwrap();
+
+            MutableVecLockMut::<'_, _>::apply_vec_diff(&mut widgets_lock, change);
+
+            // Add futures for newly inserted widgets
+            for widget in widgets_lock.iter() {
+                let id = widget.id();
+
+                if !widgets_futures_lock.contains_key(&id) {
+                    widgets_futures_lock.insert(id, widget.clone().run(ctx).boxed().into());
+                }
+            }
+
+            let current_widget_ids: HashSet<Uuid> = widgets_lock.iter().map(|w| w.id()).collect();
+
+            // Remove futures no longer in the widget list
+            let ids_to_remove: Vec<Uuid> = widgets_futures_lock
+                .iter()
+                .filter(|w| !current_widget_ids.contains(w.0))
+                .map(|w| *w.0)
+                .collect();
+
+            for id_to_remove in ids_to_remove {
+                widgets_futures_lock.remove(&id_to_remove);
+            }
+
+            async move {}
+        })
+    ));
+
+    let mut futs = FuturesUnordered::new();
+    futs.push(widgets_fut.boxed());
+    futs.push(widgets_futures_map.boxed());
+
     async move {
-        let next_widgets_stream = widgets.signal_vec_cloned().to_signal_cloned().to_stream();
-
-        let mut next_widgets_stream = next_widgets_stream.map(move |v| {
-            let futures = FuturesUnordered::new();
-
-            for (_idx, widget) in v.into_iter().enumerate() {
-                futures.push(widget.run(ctx));
-            }
-
-            futures
-        });
-
-        let mut updates = FuturesUnordered::new();
-
         loop {
-            let mut ws_next = next_widgets_stream.next().fuse();
-            let mut updated_next = updates.next().fuse();
-
-            select! {
-                nws = ws_next => {
-                    if let Some(nws) = nws {
-                        updates = nws;
-                    }
-                }
-                _un = updated_next => {
-                }
-            }
+            let _ = futs.select_next_some().await;
         }
     }
 }

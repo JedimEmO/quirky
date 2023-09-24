@@ -5,12 +5,14 @@ use lipsum::lipsum_words;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
+use quirky_widgets::primitives::border_box::BorderBox;
 use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky_widgets::widgets::button::ButtonBuilder;
 use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
 use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};
 use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
 use quirky_widgets::widgets::slab::SlabBuilder;
+use quirky_widgets::widgets::stack::StackBuilder;
 use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
 use quirky_winit::QuirkyWinitApp;
 use rand::random;
@@ -60,6 +62,27 @@ fn button_row(text: Mutable<String>) -> Arc<dyn Widget> {
         .build()
 }
 
+fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
+    StackBuilder::new()
+        .children(vec![
+            SlabBuilder::new().color([0.01, 0.05, 0.01, 1.0]).build(),
+            SlabBuilder::new()
+                .on_event(clone!(text, move |e| {
+                    match e.widget_event {
+                        WidgetEvent::MouseEvent { event } => match event {
+                            MouseEvent::ButtonDown { .. } => {
+                                text.set(format!("{}!", text.get_cloned()));
+                            }
+                            _ => {}
+                        },
+                    }
+                }))
+                .color([0.01, 0.01, 0.1, 0.2])
+                .build(),
+        ])
+        .build()
+}
+
 fn simple_panel_layout() -> Arc<dyn Widget> {
     let padding = Mutable::new(Padding::default());
     let text = Mutable::new("hello, world!".to_string());
@@ -88,19 +111,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                 BoxLayoutBuilder::new()
                     .child_direction(ChildDirection::Vertical)
                     .children(vec![
-                        SlabBuilder::new()
-                            .on_event(clone!(text, move |e| {
-                                match e.widget_event {
-                                    WidgetEvent::MouseEvent { event } => match event {
-                                        MouseEvent::ButtonDown { .. } => {
-                                            text.set(format!("{}!", text.get_cloned()));
-                                        }
-                                        _ => {}
-                                    },
-                                }
-                            }))
-                            .color([0.01, 0.01, 0.1, 1.0])
-                            .build(),
+                        stack_panel(text.clone()),
                         LayoutItemBuilder::new()
                             .child(
                                 LabelBuilder::new()

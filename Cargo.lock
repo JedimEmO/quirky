@@ -1896,6 +1896,7 @@ dependencies = [
  "glyphon",
  "image",
  "quirky-macros",
+ "quirky-utils",
  "tokio",
  "typed-builder",
  "uuid",
@@ -1913,6 +1914,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.37",
+]
+
+[[package]]
+name = "quirky-utils"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "uuid",
 ]
 
 [[package]]
