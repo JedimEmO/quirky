@@ -2,7 +2,6 @@ use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
 use glyphon::{FamilyOwned, FontSystem, Metrics, SwashCache};
 use lipsum::lipsum_words;
-use quirky::primitives::quad::Quads;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
@@ -29,8 +28,6 @@ async fn main() {
     let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout, font_system, font_cache)
         .await
         .unwrap();
-
-    quirky_app.configure_primitive::<Quads>();
 
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 

@@ -1,17 +1,15 @@
 use crate::primitives::vertex::{Vertex, QUAD_INDEXES, QUAD_VERTICES};
-use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
+use crate::primitives::{DrawablePrimitive, PrepareContext, RenderContext};
+use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
-use once_cell::sync::OnceCell;
 use std::mem;
 use std::sync::Arc;
+use uuid::Uuid;
 use wgpu::util::DeviceExt;
-use wgpu::{
-    include_wgsl, BindGroupLayout, Device, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
-    VertexState,
-};
+use wgpu::{include_wgsl, Device, PipelineLayoutDescriptor, RenderPipeline, VertexState};
 use wgpu_macros::VertexLayout;
 
-static QUAD_PIPELINE: OnceCell<Arc<RenderPipeline>> = OnceCell::new();
+const QUAD_PIPELINE_ID: Uuid = Uuid::from_u128(0x94e8f8f8_e646_4e43_beef_c80b3688c998);
 
 #[repr(C)]
 #[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -57,14 +55,14 @@ impl Quad {
 }
 
 pub struct Quads {
-    num_instances: u32,
+    geometry: ReadOnlyMutable<Arc<[Quad]>>,
     index_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
 }
 
 impl Quads {
-    pub fn new(geometry: Vec<Quad>, device: &Device) -> Self {
+    pub fn new(geometry: ReadOnlyMutable<Arc<[Quad]>>, device: &Device) -> Self {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad index buffer"),
             contents: bytemuck::cast_slice(&QUAD_VERTICES),
@@ -79,12 +77,12 @@ impl Quads {
 
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad index buffer"),
-            contents: bytemuck::cast_slice(&geometry),
-            usage: wgpu::BufferUsages::VERTEX,
+            contents: bytemuck::cast_slice(geometry.lock_ref().as_ref()),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         Self {
-            num_instances: geometry.len() as u32,
+            geometry,
             instance_buffer,
             index_buffer,
             vertex_buffer,
@@ -93,35 +91,55 @@ impl Quads {
 }
 
 impl DrawablePrimitive for Quads {
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
-        if let Some(pipeline) = QUAD_PIPELINE.get() {
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, render_context.camera_bind_group, &[]);
-            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            pass.draw_indexed(0..6, 0, 0..self.num_instances);
-        } else {
-            println!("QUAD_PIPELINE missing!");
+    fn prepare(&mut self, prepare_context: &mut PrepareContext) {
+        if !prepare_context
+            .pipeline_cache
+            .contains_key(&QUAD_PIPELINE_ID)
+        {
+            prepare_context
+                .pipeline_cache
+                .insert(QUAD_PIPELINE_ID, configure_pipeline(prepare_context));
         }
+
+        prepare_context.queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(self.geometry.lock_ref().as_ref()),
+        )
+    }
+
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>) {
+        let pipeline = render_context
+            .pipeline_cache
+            .get(&QUAD_PIPELINE_ID)
+            .unwrap();
+
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, render_context.camera_bind_group, &[]);
+        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        pass.draw_indexed(0..6, 0, 0..(self.geometry.lock_ref().len() as u32));
     }
 }
 
-impl Primitive for Quads {
-    fn configure_pipeline(
-        device: &Device,
-        bind_group_layouts: &[&BindGroupLayout],
-        surface_format: TextureFormat,
-    ) {
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts,
-            push_constant_ranges: &[],
-        });
+fn configure_pipeline(prepare_context: &PrepareContext) -> RenderPipeline {
+    let pipeline_layout =
+        prepare_context
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[prepare_context.camera_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
-        let shader = device.create_shader_module(include_wgsl!("shaders/quad.wgsl"));
+    let shader = prepare_context
+        .device
+        .create_shader_module(include_wgsl!("shaders/quad.wgsl"));
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    prepare_context
+        .device
+        .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
             vertex: VertexState {
@@ -145,18 +163,11 @@ impl Primitive for Quads {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    format: prepare_context.surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
             multiview: None,
-        });
-
-        let pipeline = Arc::new(pipeline);
-
-        QUAD_PIPELINE
-            .set(pipeline)
-            .expect("failed to set QUAD_PIPELINE");
-    }
+        })
 }

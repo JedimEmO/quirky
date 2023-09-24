@@ -6,7 +6,7 @@ pub mod view_tree;
 pub mod widget;
 pub mod widgets;
 
-use crate::primitives::{DrawablePrimitive, Primitive, RenderContext};
+use crate::primitives::{DrawablePrimitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
 use async_std::task::{block_on, sleep};
@@ -159,14 +159,6 @@ impl QuirkyApp {
             signal_dirty_rx: rx,
             drawables_cache: Default::default(),
         }
-    }
-
-    pub fn configure_primitive<T: Primitive>(&self) {
-        T::configure_pipeline(
-            &self.context.device,
-            &[&self.camera_bind_group_layout],
-            self.surface_format,
-        );
     }
 
     pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {

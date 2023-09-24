@@ -15,7 +15,6 @@ futures.workspace = true
 futures-signals.workspace = true
 futures-signals-utils.workspace = true
 image.workspace = true
-once_cell = "1.18.0"
 quirky-macros = { path = "../quirky-macros" }
 glam.workspace = true
 glyphon.workspace = true

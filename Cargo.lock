@@ -1895,7 +1895,6 @@ dependencies = [
  "glam",
  "glyphon",
  "image",
- "once_cell",
  "quirky-macros",
  "tokio",
  "typed-builder",

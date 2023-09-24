@@ -61,13 +61,12 @@ impl<
             self.color_prop_value.get().unwrap()
         };
 
-        let quads = Box::new(Quads::new(
-            vec![
-                Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
-                Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
-            ],
-            &ctx.device,
-        ));
+        let geometry: Mutable<Arc<[Quad]>> = Mutable::new(Arc::new([
+            Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
+            Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
+        ]));
+
+        let quads = Box::new(Quads::new(geometry.read_only(), &ctx.device));
 
         let data = Mutable::new(BorderBoxData {
             pos: *bb.pos.as_vec2().as_ref(),
