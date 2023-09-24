@@ -11,6 +11,7 @@ pub(crate) struct FnSignalProp {
     pub signal_type: Type,
     pub signal_fn_name: Ident,
     pub default: Option<Expr>,
+    pub force_repaint: bool,
 }
 
 impl From<Field> for FnSignalProp {
@@ -27,6 +28,11 @@ impl From<Field> for FnSignalProp {
         } else {
             None
         };
+
+        let force_repaint = attrs
+            .iter()
+            .find(|a| a.path().is_ident("force_repaint"))
+            .is_some();
 
         let signal_name = syn::parse_str::<Ident>(
             format!("{}Signal", ident)
@@ -50,6 +56,7 @@ impl From<Field> for FnSignalProp {
             signal_type,
             signal_fn_name,
             default,
+            force_repaint,
         }
     }
 }

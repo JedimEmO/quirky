@@ -537,8 +537,6 @@ impl BuilderStruct {
                     .throttle(|| async_std::task::sleep(std::time::Duration::from_millis(20)))
                     .for_each(|_| {
                         let ctx = &*ctx;
-                        self.set_dirty();
-
                         async move {
                             ctx.signal_redraw().await;
                         }
@@ -554,11 +552,18 @@ impl BuilderStruct {
         let sig_propname =
             syn::parse_str::<Ident>(format!("{}_prop_value", sig_name).as_str()).expect("f");
 
+        let repaint = if sig.force_repaint {
+            quote! { self.set_dirty(); }
+        } else {
+            quote! {}
+        };
+
         quote! {
             (self.#sig_name)().for_each(|incoming_value| {
                 self.#sig_propname.set(Some(incoming_value));
                 let ctx = &*ctx;
-                self.set_dirty();
+                #repaint
+
                 async move {
                     ctx.signal_redraw().await;
                 }
@@ -609,12 +614,15 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
 
         impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
             pub fn build(self) -> std::sync::Arc<dyn Widget + 'static> {
-                #struct_name {
+                let out = #struct_name {
                     id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
                     dirty: Default::default(),
                     #(#real_struct_member_inits),*
-                }.build()
+                }.build();
+
+                out.set_dirty();
+                out
             }
         }
 

@@ -41,6 +41,7 @@ impl Default for FontSettings {
 #[widget]
 pub struct Label {
     #[signal_prop]
+    #[force_repaint]
     text: Arc<str>,
     #[signal_prop]
     #[default(Default::default())]

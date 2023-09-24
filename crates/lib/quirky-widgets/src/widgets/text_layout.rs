@@ -23,6 +23,7 @@ pub struct TextLayout {
     color: [f32; 4],
     #[signal_prop]
     #[default("".into())]
+    #[force_repaint]
     text: Arc<str>,
     #[slot]
     on_event: Event,
