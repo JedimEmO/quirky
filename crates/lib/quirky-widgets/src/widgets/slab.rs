@@ -149,6 +149,7 @@ impl<
                 },
                 _ => {}
             }
+            async move {}
         });
         futs.push(event_redraw.boxed());
         futs.push(hover_redraw.boxed());

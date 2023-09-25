@@ -4,7 +4,6 @@ use quirky::widget::Widget;
 use quirky::{
     KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, QuirkyApp, WidgetEvent,
 };
-use std::os::unix::raw::ino_t;
 use std::sync::Arc;
 use uuid::Uuid;
 use wgpu::{
@@ -318,8 +317,7 @@ fn winit_keycode_to_quirky(keycode: VirtualKeyCode) -> KeyCode {
         VirtualKeyCode::Asterisk => KeyCode::Asterisk,
         VirtualKeyCode::Backslash => KeyCode::Backslash,
         VirtualKeyCode::Semicolon => KeyCode::Semicolon,
-        VirtualKeyCode::Slash => KeyCode::Slash,
-        VirtualKeyCode::At => KeyCode::Slash,
+        VirtualKeyCode::At => KeyCode::At,
         _ => KeyCode::Unknown,
     }
 }

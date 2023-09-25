@@ -10,14 +10,11 @@ use crate::primitives::{DrawablePrimitive, RenderContext};
 use crate::quirky_app_context::FontContext;
 use crate::ui_camera::UiCamera2D;
 use async_std::task::{block_on, sleep};
-use futures::future::BoxFuture;
-use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::{Future, FutureExt};
 use futures_signals::map_ref;
 use futures_signals::signal::{Mutable, Signal, SignalExt};
-use futures_signals::signal_map::MutableBTreeMap;
 use futures_signals::signal_vec::MutableVecLockMut;
 use futures_signals::signal_vec::{MutableVec, SignalVec};
 use futures_signals::signal_vec::{SignalVecExt, VecDiff};
@@ -27,13 +24,11 @@ use primitives::PrepareContext;
 use quirky_app_context::QuirkyAppContext;
 use quirky_utils::futures_map_poll::FuturesMapPoll;
 use std::borrow::BorrowMut;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::iter;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use uuid::Uuid;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -193,8 +188,8 @@ pub enum KeyCode {
     Equals,
     Grave,
     Semicolon,
-    Slash,
     At,
+    Enter,
     Unknown,
 }
 
@@ -235,10 +230,17 @@ pub enum MouseEvent {
     },
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum FocusState {
+    Focused,
+    Unfocused,
+}
+
 #[derive(Clone)]
 pub enum WidgetEvent {
     KeyboardEvent { event: KeyboardEvent },
     MouseEvent { event: MouseEvent },
+    FocusChange(FocusState),
 }
 
 #[derive(Clone)]
@@ -493,7 +495,7 @@ pub fn run_widgets<'a>(
     let widgets = MutableVec::new();
     let (widgets_futures_map, data) = FuturesMapPoll::new();
 
-    let mut widgets_fut = widgets_signal.for_each(clone!(
+    let widgets_fut = widgets_signal.for_each(clone!(
         data,
         clone!(widgets, move |change: VecDiff<Arc<dyn Widget>>| {
             let mut widgets_lock = widgets.lock_mut();

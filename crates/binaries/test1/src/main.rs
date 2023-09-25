@@ -84,6 +84,7 @@ fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
             TextInputBuilder::new()
                 .text_value_signal(clone!(text, move || text.signal_cloned()))
                 .on_text_change(clone!(text, move |v| { text.set(v.to_string()) }))
+                .on_submit(|_| println!("submitted"))
                 .build(),
         ])
         .build()

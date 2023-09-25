@@ -88,7 +88,7 @@ impl<'a> FuturesMapPoll<'a> {
 impl<'a> Future for FuturesMapPoll<'a> {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let ids_to_remove = {
             let mut data = self
                 .futures_map

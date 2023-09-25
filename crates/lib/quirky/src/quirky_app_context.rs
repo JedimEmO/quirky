@@ -1,4 +1,4 @@
-use crate::{LayoutToken, MouseEvent, WidgetEvent};
+use crate::{FocusState, LayoutToken, MouseEvent, WidgetEvent};
 use async_std::channel::Sender;
 use async_std::prelude::Stream;
 use async_std::sync::Mutex;
@@ -64,8 +64,20 @@ impl QuirkyAppContext {
         }
 
         if let WidgetEvent::MouseEvent { event } = &event {
-            if let MouseEvent::ButtonDown { button } = event {
-                self.focused_widget_id.lock().unwrap().take();
+            if let MouseEvent::ButtonDown { .. } = event {
+                let mut currently_focused = self.focused_widget_id.lock().unwrap();
+
+                if Some(target) != *currently_focused && currently_focused.is_some() {
+                    if let Some(sender) = sender_lock.get_mut(&currently_focused.unwrap()) {
+                        if sender.is_closed() {
+                            sender_lock.remove(&target);
+                        } else {
+                            sender.try_send(WidgetEvent::FocusChange(FocusState::Unfocused))?;
+                        }
+                    }
+                }
+
+                currently_focused.take();
             }
         };
 
@@ -103,5 +115,6 @@ impl QuirkyAppContext {
 
     pub fn request_focus(&self, widget_id: Uuid) {
         let _ = self.focused_widget_id.lock().unwrap().insert(widget_id);
+        let _ = self.dispatch_event(widget_id, WidgetEvent::FocusChange(FocusState::Focused));
     }
 }

@@ -14,7 +14,7 @@ use wgpu_macros::VertexLayout;
 const BORDER_BOX_PRIMITIVE_UUID: Uuid = Uuid::from_u128(0xe136d9b9_d64a_4932_8eb3_106b52e2537c);
 
 #[repr(C)]
-#[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
+#[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone, Default)]
 #[layout(Instance)]
 pub struct BorderBoxData {
     pub pos: [f32; 2],
