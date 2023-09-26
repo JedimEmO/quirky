@@ -1,6 +1,7 @@
 use crate::primitives::border_box::{BorderBox, BorderBoxData};
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
+use futures_signals::map_ref;
 use futures_signals::signal::Signal;
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
@@ -26,6 +27,45 @@ pub struct Slab {
     is_hovered: Mutable<bool>,
     #[slot]
     on_event: Event,
+    #[default(Mutable::new(Arc::new([])))]
+    quad_geometry: Mutable<Arc<[Quad]>>,
+    border_box_data: Mutable<BorderBoxData>,
+}
+impl<
+        ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
+        ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
+        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
+        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
+        OnEventCallback: Fn(Event) -> () + Send + Sync,
+    >
+    Slab<ColorSignal, ColorSignalFn, SizeConstraintSignal, SizeConstraintSignalFn, OnEventCallback>
+{
+    fn regenerate_primitives(&self) {
+        let bb = self.bounding_box.get();
+        let mut size = bb.size;
+
+        if bb.size.length_squared() == 0 {
+            size = UVec2::new(1, 1);
+        }
+
+        let color = if self.is_hovered.get() {
+            [0.009, 0.009, 0.01, 1.0]
+        } else {
+            self.color_prop_value.get().unwrap()
+        };
+
+        self.quad_geometry
+            .set(Arc::new([Quad::new(bb.pos, size, color)]));
+
+        self.border_box_data.set(BorderBoxData {
+            pos: *bb.pos.as_vec2().as_ref(),
+            size: *size.as_vec2().as_ref(),
+            color: [0.02, 0.02, 0.02, 1.0],
+            shade_color: [0.02, 0.02, 0.02, 1.0],
+            border_side: 0,
+            borders: [1, 1, 1, 1],
+        });
+    }
 }
 
 #[async_trait]
@@ -49,35 +89,12 @@ impl<
         ctx: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,
     ) -> Vec<Box<dyn DrawablePrimitive>> {
-        let bb = self.bounding_box.get();
-
-        if bb.size.x < 20 || bb.size.y < 20 {
-            return vec![];
-        }
-
-        let color = if self.is_hovered.get() {
-            [0.009, 0.009, 0.01, 1.0]
-        } else {
-            self.color_prop_value.get().unwrap()
-        };
-
-        let geometry: Mutable<Arc<[Quad]>> = Mutable::new(Arc::new([
-            Quad::new(bb.pos, bb.size, [0.02, 0.02, 0.02, 1.0]),
-            Quad::new(bb.pos + UVec2::new(1, 1), bb.size - UVec2::new(2, 2), color),
-        ]));
-
-        let quads = Box::new(Quads::new(geometry.read_only(), &ctx.device));
-
-        let data = Mutable::new(BorderBoxData {
-            pos: *bb.pos.as_vec2().as_ref(),
-            size: *bb.size.as_vec2().as_ref(),
-            color: [0.02, 0.02, 0.02, 1.0],
-            shade_color: [0.02, 0.02, 0.02, 1.0],
-            border_side: 0,
-            borders: [1, 1, 1, 1],
-        });
-
-        let border_box = Box::new(BorderBox::new(data.read_only(), &ctx.device));
+        self.regenerate_primitives();
+        let quads = Box::new(Quads::new(self.quad_geometry.read_only(), &ctx.device));
+        let border_box = Box::new(BorderBox::new(
+            self.border_box_data.read_only(),
+            &ctx.device,
+        ));
 
         vec![quads, border_box]
     }
@@ -101,31 +118,13 @@ impl<
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let widget_events = ctx.subscribe_to_widget_events(self.id());
 
-        let event_redraw = widget_events.for_each(clone!(self, move |e| {
-            clone!(self, async move {
-                let ec = e.clone();
-
-                match e {
-                    WidgetEvent::MouseEvent { event } => match event {
-                        MouseEvent::Move { .. } => {
-                            self.is_hovered.set(true);
-                        }
-                        MouseEvent::Leave {} => {
-                            self.is_hovered.set(false);
-                        }
-                        MouseEvent::ButtonDown { .. } => {
-                            (self.on_event)(Event { widget_event: ec });
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            })
-        }));
-
-        let hover_redraw = self.is_hovered.signal().dedupe().for_each(|_| {
-            let ctx = &*ctx;
-            self.set_dirty();
+        let regen_fut = map_ref! {
+            let bb = self.bounding_box.signal(),
+            let hovered = self.is_hovered.signal() => {
+            }
+        }
+        .for_each(|_| {
+            self.regenerate_primitives();
             async move {
                 ctx.signal_redraw().await;
             }
@@ -151,8 +150,8 @@ impl<
             }
             async move {}
         });
-        futs.push(event_redraw.boxed());
-        futs.push(hover_redraw.boxed());
+
+        futs.push(regen_fut.boxed());
 
         loop {
             let _n = futs.select_next_some().await;

@@ -459,7 +459,9 @@ impl BuilderStruct {
             .iter()
             .map(|f| {
                 let FnSignalProp { field_name, .. } = f;
-                quote! { #field_name: self.#field_name.expect("missing signal") }
+                let name = field_name.to_string();
+
+                quote! { #field_name: self.#field_name.expect(format!("missing signal {}", #name).as_str()) }
             })
             .collect::<Vec<_>>();
 
@@ -618,6 +620,7 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
                     id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
                     dirty: Default::default(),
+                    cached_primitives: Default::default(),
                     #(#real_struct_member_inits),*
                 }.build();
 
@@ -630,6 +633,7 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
             id: uuid::Uuid,
             bounding_box: futures_signals::signal::Mutable<quirky::LayoutBox>,
             dirty: futures_signals::signal::Mutable<bool>,
+            cached_primitives: futures_signals::signal::Mutable<Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>>>,
             #(#real_struct_members),*
         }
 
@@ -660,6 +664,14 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
 
             fn clear_dirty(&self) -> () {
                 self.dirty.set(false);
+            }
+
+            fn get_cached_primitives(&self) -> Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>> {
+                self.cached_primitives.lock_mut().take()
+            }
+
+            fn set_cached_primitives(&self, primitives: Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>>) -> () {
+                self.cached_primitives.lock_mut().insert(primitives.or(Some(vec![])).unwrap());
             }
 
             #props_runner

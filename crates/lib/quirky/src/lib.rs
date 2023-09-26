@@ -24,7 +24,7 @@ use primitives::PrepareContext;
 use quirky_app_context::QuirkyAppContext;
 use quirky_utils::futures_map_poll::FuturesMapPoll;
 use std::borrow::BorrowMut;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
 use std::iter;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -259,7 +259,7 @@ pub struct QuirkyApp {
     camera_bind_group_layout: BindGroupLayout,
     camera_bind_group: BindGroup,
     signal_dirty_rx: async_std::channel::Receiver<()>,
-    drawables_cache: Mutex<Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>>,
+    drawables_cache: Mutex<VecDeque<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>>,
 }
 
 impl QuirkyApp {
@@ -301,7 +301,7 @@ impl QuirkyApp {
             camera_bind_group_layout,
             camera_bind_group,
             signal_dirty_rx: rx,
-            drawables_cache: Default::default(),
+            drawables_cache: Mutex::new(VecDeque::with_capacity(10000)),
         }
     }
 
@@ -372,8 +372,6 @@ impl QuirkyApp {
                         label: Some("hi there"),
                     });
 
-            let mut drawables_cache = self.drawables_cache.lock().unwrap();
-
             let mut font_system = block_on(self.context.font_context.font_system.lock());
             let mut font_cache = block_on(self.context.font_context.font_cache.lock());
             let mut text_atlas = block_on(self.context.font_context.text_atlas.lock());
@@ -393,14 +391,16 @@ impl QuirkyApp {
                 camera_bind_group_layout: &self.camera_bind_group_layout,
             };
 
-            let mut drawables = next_drawable_list(
+            let mut out_list = VecDeque::with_capacity(10000);
+
+            next_drawable_list(
                 &self.widget,
-                &mut drawables_cache,
                 &self.context,
                 &mut paint_context,
+                &mut out_list,
             );
 
-            for drawable in drawables.iter_mut() {
+            for drawable in out_list.iter_mut() {
                 for d in drawable.1.iter_mut() {
                     d.prepare(&mut paint_context);
                 }
@@ -433,19 +433,20 @@ impl QuirkyApp {
                     bind_group_cache: &bind_group_cache,
                 };
 
-                drawables.iter().for_each(|d| {
+                out_list.iter().for_each(|d| {
                     d.1.iter().for_each(|d2| {
                         d2.draw(&mut pass, &render_context);
                     });
                 });
             }
 
-            drawables_cache.clear();
-            drawables_cache.append(&mut drawables);
-
             self.context.queue.submit(iter::once(encoder.finish()));
 
             output.present();
+
+            for d in out_list {
+                d.2.set_cached_primitives(Some(d.1));
+            }
         }
 
         Ok(())
@@ -542,35 +543,27 @@ pub fn run_widgets<'a>(
 
 fn next_drawable_list(
     widget: &Arc<dyn Widget>,
-    old_list: &mut Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>,
     ctx: &QuirkyAppContext,
     paint_ctx: &mut PrepareContext,
-) -> Vec<(Uuid, Vec<Box<dyn DrawablePrimitive>>)> {
+    out: &mut VecDeque<(Uuid, Vec<Box<dyn DrawablePrimitive>>, Arc<dyn Widget>)>,
+) {
     let widget_id = widget.id();
-    let widget_primitives = if widget.dirty().get() {
+
+    if widget.dirty().get() {
         widget.clear_dirty();
-        vec![(widget_id, widget.paint(ctx, paint_ctx))]
-    } else if let Some(old_index) = old_list.iter().position(|v| v.0 == widget_id) {
-        vec![old_list.remove(old_index)]
+        out.push_back((widget_id, widget.paint(ctx, paint_ctx), widget.clone()));
     } else {
-        vec![]
-    };
+        out.push_back((
+            widget_id,
+            widget.get_cached_primitives().or(Some(vec![])).unwrap(),
+            widget.clone(),
+        ));
+    }
 
-    let child_primitives = widget
-        .children()
-        .map(|children| {
-            children
-                .iter()
-                .flat_map(|child| next_drawable_list(child, old_list, ctx, paint_ctx))
-                .collect::<Vec<_>>()
-        })
-        .or(Some(vec![]))
-        .unwrap();
-
-    vec![widget_primitives, child_primitives]
-        .into_iter()
-        .flatten()
-        .collect()
+    widget.children().map(|v| {
+        v.iter()
+            .for_each(|child| next_drawable_list(child, ctx, paint_ctx, out))
+    });
 }
 
 #[derive(Default, Clone, Copy, Debug)]

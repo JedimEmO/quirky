@@ -19,6 +19,8 @@ pub trait WidgetBase {
     fn dirty(&self) -> ReadOnlyMutable<bool>;
     fn set_dirty(&self);
     fn clear_dirty(&self);
+    fn get_cached_primitives(&self) -> Option<Vec<Box<dyn DrawablePrimitive>>>;
+    fn set_cached_primitives(&self, primitives: Option<Vec<Box<dyn DrawablePrimitive>>>) -> ();
     fn poll_prop_futures<'a>(
         &'a self,
         ctx: &'a QuirkyAppContext,
