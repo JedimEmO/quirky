@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
-use futures_signals::signal::SignalExt;
+use futures_signals::signal::{Signal, SignalExt};
 use quirky::quirky_app_context::QuirkyAppContext;
-use quirky::run_widgets;
 use quirky::widget::{Widget, WidgetBase};
+use quirky::{run_widgets, SizeConstraint};
 use quirky_macros::widget;
 use std::sync::Arc;
 
@@ -13,6 +13,10 @@ pub struct Stack {
     #[signal_prop]
     #[default(vec![])]
     children: Vec<Arc<dyn Widget>>,
+
+    #[signal_prop]
+    #[default(Default::default())]
+    size_constraint: SizeConstraint,
 }
 
 #[async_trait]
@@ -23,11 +27,23 @@ impl<
             + Unpin
             + 'static,
         ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
-    > Widget for Stack<ChildrenSignal, ChildrenSignalFn>
+        SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
+        SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
+    > Widget
+    for Stack<ChildrenSignal, ChildrenSignalFn, SizeConstraintSignal, SizeConstraintSignalFn>
 {
     fn children(&self) -> Option<Vec<Arc<dyn Widget>>> {
         let children = self.children_prop_value.get_cloned();
         children
+    }
+
+    fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
+        Box::new(
+            self.size_constraint_prop_value
+                .signal()
+                .map(|v| v.or(Some(SizeConstraint::Unconstrained)).unwrap())
+                .dedupe(),
+        )
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {

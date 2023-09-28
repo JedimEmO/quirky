@@ -46,6 +46,9 @@ pub struct Label {
     #[signal_prop]
     #[default(Default::default())]
     font_settings: FontSettings,
+    #[signal_prop]
+    #[default([0.2, 0.2, 0.1])]
+    text_color: [f32; 3],
     #[default(Arc::new(RwLock::new(None)))]
     text_buffer: Arc<RwLock<Option<Buffer>>>,
 }
@@ -56,7 +59,17 @@ impl<
         TextSignalFn: Fn() -> TextSignal + Send + Sync + 'static,
         FontSettingsSignal: futures_signals::signal::Signal<Item = FontSettings> + Send + Sync + Unpin + 'static,
         FontSettingsSignalFn: Fn() -> FontSettingsSignal + Send + Sync + 'static,
-    > Widget for Label<TextSignal, TextSignalFn, FontSettingsSignal, FontSettingsSignalFn>
+        TextColorSignal: futures_signals::signal::Signal<Item = [f32; 3]> + Send + Sync + Unpin + 'static,
+        TextColorSignalFn: Fn() -> TextColorSignal + Send + Sync + 'static,
+    > Widget
+    for Label<
+        TextSignal,
+        TextSignalFn,
+        FontSettingsSignal,
+        FontSettingsSignalFn,
+        TextColorSignal,
+        TextColorSignalFn,
+    >
 {
     fn paint(
         &self,
@@ -114,6 +127,8 @@ impl<
         let screen_resolution = quirky_context.viewport_size.get();
         let buffer = buffer_lock.insert(buffer);
 
+        let text_color = self.text_color_prop_value.get().unwrap();
+
         let _ = renderer.prepare(
             &quirky_context.device,
             &quirky_context.queue,
@@ -134,7 +149,11 @@ impl<
                     right: (bb.pos.x as i32 + bb.size.x as i32).min(screen_resolution.x as i32),
                     bottom: (bb.pos.y as i32 + bb.size.y as i32).min(screen_resolution.y as i32),
                 },
-                default_color: Color::rgb(80, 80, 50),
+                default_color: Color::rgb(
+                    (text_color[0] * 256.0) as u8,
+                    (text_color[1] * 256.0) as u8,
+                    (text_color[2] * 256.0) as u8,
+                ),
             }],
             paint_quirky_context.font_cache.borrow_mut(),
         );

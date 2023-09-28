@@ -1,10 +1,14 @@
+use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
 use quirky::{
-    KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, QuirkyApp, WidgetEvent,
+    clone, KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, QuirkyApp,
+    WidgetEvent,
 };
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
 use uuid::Uuid;
 use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
@@ -98,18 +102,84 @@ impl QuirkyWinitApp {
                 .expect("failed to send eventloop message on new drawables")
         }
     }
-    pub fn run(mut self) {
+
+    pub fn run_event_loop(mut self) {
         let event_loop = self
             .event_loop
             .take()
             .expect("invalid QuirkiWinitApp: missing event loop");
 
         let mut mouse_pos = PhysicalPosition::default();
-        let mut prev_hovered: Option<Uuid> = None;
-        let mut target_widget: Option<Uuid> = None;
-        let mut prev_drag_pos: Option<UVec2> = None;
-        let mut drag_button: Option<MouseButton> = None;
+        let prev_hovered: Mutable<Option<Uuid>> = Default::default();
+        let target_widget: Mutable<Option<Uuid>> = Default::default();
+        let prev_drag_pos: Mutable<Option<UVec2>> = Default::default();
+        let drag_button: Mutable<Option<MouseButton>> = Default::default();
         let mut modifiers = KeyboardModifier::default();
+        let current_mouse_pos: Mutable<UVec2> = Default::default();
+
+        let quirky_app = self.quirky_app.clone();
+        tokio::spawn(clone!(
+            prev_hovered,
+            clone!(
+                drag_button,
+                clone!(
+                    target_widget,
+                    clone!(
+                        prev_drag_pos,
+                        clone!(current_mouse_pos, async move {
+                            current_mouse_pos
+                                .signal()
+                                .throttle(|| sleep(Duration::from_millis(5)))
+                                .for_each(|pos| {
+                                    if target_widget.get().is_some()
+                                        && prev_drag_pos.get().is_some()
+                                    {
+                                        quirky_app.dispatch_event_to_widget(
+                                            target_widget.get().unwrap(),
+                                            WidgetEvent::MouseEvent {
+                                                event: MouseEvent::Drag {
+                                                    from: prev_drag_pos.get().unwrap(),
+                                                    to: pos,
+                                                    button: drag_button.get().unwrap(),
+                                                },
+                                            },
+                                        );
+                                    }
+
+                                    if let Some(widgets) = quirky_app.get_widgets_at(pos) {
+                                        let new_target_widget = *widgets.first().unwrap();
+
+                                        if let Some(p) = prev_hovered.get() {
+                                            if p != new_target_widget {
+                                                quirky_app.dispatch_event_to_widget(
+                                                    p,
+                                                    WidgetEvent::MouseEvent {
+                                                        event: MouseEvent::Leave {},
+                                                    },
+                                                );
+                                            }
+                                        }
+
+                                        prev_hovered.set(Some(new_target_widget));
+
+                                        quirky_app.dispatch_event_to_widget(
+                                            new_target_widget,
+                                            WidgetEvent::MouseEvent {
+                                                event: MouseEvent::Move { pos },
+                                            },
+                                        );
+                                    }
+
+                                    prev_drag_pos.set(Some(pos));
+
+                                    async move {}
+                                })
+                                .await;
+                        })
+                    )
+                )
+            )
+        ));
 
         event_loop.run(move |event, _target, control_flow: &mut ControlFlow| {
             *control_flow = ControlFlow::Wait;
@@ -129,7 +199,7 @@ impl QuirkyWinitApp {
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         if input.state == ElementState::Pressed {
-                            let target = prev_hovered.or(Some(Uuid::nil())).unwrap();
+                            let target = prev_hovered.get().or(Some(Uuid::nil())).unwrap();
 
                             let code = input
                                 .virtual_keycode
@@ -151,27 +221,28 @@ impl QuirkyWinitApp {
                     WindowEvent::Resized(new_size) => self.resize_window(new_size),
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     WindowEvent::MouseInput { state, button, .. } => {
+                        let mouse_pos = current_mouse_pos.get();
+
                         if state == ElementState::Pressed {
                             if let Some(p) = self
                                 .quirky_app
-                                .get_widgets_at(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32))
+                                .get_widgets_at(UVec2::new(mouse_pos.x, mouse_pos.y))
                             {
-                                prev_drag_pos =
-                                    Some(UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32));
+                                prev_drag_pos.set(Some(UVec2::new(mouse_pos.x, mouse_pos.y)));
 
                                 let new_target_widget = *p.first().unwrap();
 
-                                target_widget = Some(new_target_widget);
+                                target_widget.set(Some(new_target_widget));
 
                                 if button == winit::event::MouseButton::Left {
-                                    drag_button = Some(MouseButton::Left);
+                                    drag_button.set(Some(MouseButton::Left));
                                 } else if button == winit::event::MouseButton::Right {
-                                    drag_button = Some(MouseButton::Right);
+                                    drag_button.set(Some(MouseButton::Right));
                                 } else if button == winit::event::MouseButton::Middle {
-                                    drag_button = Some(MouseButton::Middle);
+                                    drag_button.set(Some(MouseButton::Middle));
                                 }
 
-                                if let Some(b) = &drag_button {
+                                if let Some(b) = &drag_button.get() {
                                     self.quirky_app.dispatch_event_to_widget(
                                         new_target_widget,
                                         WidgetEvent::MouseEvent {
@@ -183,63 +254,25 @@ impl QuirkyWinitApp {
                         }
 
                         if state == ElementState::Released {
-                            if let Some(prev_target_widget) = target_widget {
+                            if let Some(prev_target_widget) = target_widget.get() {
                                 self.quirky_app.dispatch_event_to_widget(
                                     prev_target_widget,
                                     WidgetEvent::MouseEvent {
                                         event: MouseEvent::ButtonUp {
-                                            button: drag_button.unwrap(),
+                                            button: drag_button.get().unwrap(),
                                         },
                                     },
                                 );
                             }
 
-                            drag_button = None;
-                            target_widget = None;
+                            drag_button.set(None);
+                            target_widget.set(None);
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {
                         mouse_pos = position;
                         let pos = UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32);
-
-                        if target_widget.is_some() && prev_drag_pos.is_some() {
-                            self.quirky_app.dispatch_event_to_widget(
-                                target_widget.unwrap(),
-                                WidgetEvent::MouseEvent {
-                                    event: MouseEvent::Drag {
-                                        from: prev_drag_pos.unwrap(),
-                                        to: pos,
-                                        button: drag_button.unwrap(),
-                                    },
-                                },
-                            );
-                        }
-
-                        if let Some(widgets) = self.quirky_app.get_widgets_at(pos) {
-                            let new_target_widget = *widgets.first().unwrap();
-
-                            if let Some(p) = prev_hovered {
-                                if p != new_target_widget {
-                                    self.quirky_app.dispatch_event_to_widget(
-                                        p,
-                                        WidgetEvent::MouseEvent {
-                                            event: MouseEvent::Leave {},
-                                        },
-                                    );
-                                }
-                            }
-
-                            prev_hovered = Some(new_target_widget);
-
-                            self.quirky_app.dispatch_event_to_widget(
-                                new_target_widget,
-                                WidgetEvent::MouseEvent {
-                                    event: MouseEvent::Move { pos },
-                                },
-                            );
-                        }
-
-                        prev_drag_pos = Some(pos);
+                        current_mouse_pos.set(pos);
                     }
                     _ => {}
                 },

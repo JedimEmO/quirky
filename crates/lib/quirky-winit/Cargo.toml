@@ -10,6 +10,7 @@ anyhow.workspace = true
 futures-signals.workspace = true
 glam.workspace = true
 glyphon.workspace = true
+tokio.workspace = true
 quirky = { path = "../quirky" }
 uuid.workspace = true
 winit.workspace = true

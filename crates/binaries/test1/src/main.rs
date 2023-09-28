@@ -12,7 +12,7 @@ use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};
 use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_widgets::widgets::stack::StackBuilder;
-use quirky_widgets::widgets::text_input::TextInputBuilder;
+use quirky_widgets::widgets::text_input::{text_input, TextInputBuilder};
 use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
 use quirky_winit::QuirkyWinitApp;
 use rand::random;
@@ -34,7 +34,7 @@ async fn main() {
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 
     tokio::spawn(quirky_app.run(draw_notifier));
-    quirky_winit_app.run();
+    quirky_winit_app.run_event_loop();
 }
 
 fn button_row(text: Mutable<String>) -> Arc<dyn Widget> {
@@ -81,18 +81,13 @@ fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
                 }))
                 .color([0.01, 0.01, 0.1, 0.2])
                 .build(),
-            TextInputBuilder::new()
-                .text_value_signal(clone!(text, move || text.signal_cloned()))
-                .on_text_change(clone!(text, move |v| { text.set(v.to_string()) }))
-                .on_submit(|_| println!("submitted"))
-                .build(),
         ])
         .build()
 }
 
 fn simple_panel_layout() -> Arc<dyn Widget> {
     let padding = Mutable::new(Padding::default());
-    let text = Mutable::new("hello, world!".to_string());
+    let text = Mutable::new("".to_string());
 
     tokio::spawn(clone!(padding, async move {
         loop {
@@ -118,6 +113,11 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                 BoxLayoutBuilder::new()
                     .child_direction(ChildDirection::Vertical)
                     .children(vec![
+                        text_input(
+                            text.signal_cloned(),
+                            clone!(text, move |v| { text.set(v.to_string()) }),
+                            |_| println!("submitted"),
+                        ),
                         stack_panel(text.clone()),
                         LayoutItemBuilder::new()
                             .child(

@@ -19,7 +19,7 @@ async fn main() {
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 
     tokio::spawn(quirky_app.run(draw_notifier));
-    quirky_winit_app.run();
+    quirky_winit_app.run_event_loop();
 }
 
 fn thousands_layout() -> Arc<dyn Widget> {

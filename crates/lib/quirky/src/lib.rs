@@ -566,7 +566,7 @@ fn next_drawable_list(
     });
 }
 
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SizeConstraint {
     MinSize(UVec2),
     #[default]

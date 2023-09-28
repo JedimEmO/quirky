@@ -1,15 +1,21 @@
 use crate::primitives::border_box::{BorderBox, BorderBoxData};
+use crate::widgets::label::{FontSettings, LabelBuilder};
+use crate::widgets::layout_item::LayoutItemBuilder;
+use crate::widgets::stack::StackBuilder;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
-use futures_signals::signal::{Mutable, SignalExt};
+use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+use futures_signals::signal_vec::MutableVec;
+use futures_signals::signal_vec::SignalVecExt;
 use glam::UVec2;
+use glyphon::{FamilyOwned, Metrics, Style, Weight};
 use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::widget::{Widget, WidgetBase};
 use quirky::widgets::event_subscribe::run_subscribe_to_events;
-use quirky::{clone, FocusState, KeyCode, KeyboardEvent, MouseEvent, WidgetEvent};
+use quirky::{clone, FocusState, KeyCode, KeyboardEvent, MouseEvent, SizeConstraint, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -231,8 +237,62 @@ impl<
         });
 
         futs.push(update_sig.boxed());
+
         loop {
             let _ = futs.select_next_some().await;
         }
     }
+}
+
+pub fn text_input(
+    value_signal: impl Signal<Item = String> + Send + Sync + 'static,
+    on_value: impl Fn(String) -> () + Send + Sync + 'static,
+    on_submit: impl Fn(()) -> () + Send + Sync + 'static,
+) -> Arc<dyn Widget> {
+    let value_bc = value_signal.broadcast();
+
+    let children = MutableVec::new_with_values(vec![
+        TextInputBuilder::new()
+            .text_value_signal(clone!(value_bc, move || value_bc.signal_cloned()))
+            .on_text_change(on_value)
+            .on_submit(on_submit)
+            .build(),
+        LayoutItemBuilder::new()
+            .child(
+                LabelBuilder::new()
+                    .font_settings(FontSettings {
+                        metrics: Metrics {
+                            font_size: 16.0,
+                            line_height: 16.0,
+                        },
+                        family: FamilyOwned::Monospace,
+                        stretch: Default::default(),
+                        style: Style::Italic,
+                        weight: Weight::THIN,
+                    })
+                    .text_color([0.1, 0.1, 0.1])
+                    .text_signal(clone!(value_bc, move || {
+                        let is_empty_sig = value_bc.signal_cloned().map(|v| v.len() == 0).dedupe();
+                        is_empty_sig.map(|e| if e { "Some input...".into() } else { "".into() })
+                    }))
+                    .build(),
+            )
+            .build(),
+        LayoutItemBuilder::new()
+            .child(
+                LabelBuilder::new()
+                    .text_signal(clone!(value_bc, move || value_bc
+                        .signal_cloned()
+                        .map(|v| v.into())))
+                    .build(),
+            )
+            .build(),
+    ]);
+
+    StackBuilder::new()
+        .size_constraint(SizeConstraint::MaxHeight(40))
+        .children_signal(clone!(children, move || children
+            .signal_vec_cloned()
+            .to_signal_cloned()))
+        .build()
 }
