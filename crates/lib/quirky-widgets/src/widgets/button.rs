@@ -1,5 +1,5 @@
+use crate::layouts::anchored_container::{single_child_layout_strategy, AnchorPoint};
 use crate::primitives::button_primitive::{ButtonData, ButtonPrimitive};
-use crate::widgets::layout_item::single_child_layout_strategy;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
@@ -153,13 +153,17 @@ impl<
             self.bounding_box().signal(),
             self.content_prop_value
                 .signal_cloned()
-                .map(|v| v.into_iter().map(|c| c.size_constraint()).collect()),
-            always(Padding {
-                left: 3,
-                right: 3,
-                top: 3,
-                bottom: 3,
-            }),
+                .map(|v| v.into_iter().map(|c| c.size_constraint()).collect())
+                .to_signal_vec(),
+            always((
+                Padding {
+                    left: 3,
+                    right: 3,
+                    top: 3,
+                    bottom: 3,
+                },
+                AnchorPoint::Center,
+            )),
             single_child_layout_strategy,
         )
         .for_each(clone!(self, move |new_layouts| {

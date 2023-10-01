@@ -1,16 +1,17 @@
-use crate::widgets::run_widget_with_children::run_widget_with_children;
 use async_trait::async_trait;
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
 use futures_signals::signal::Signal;
 use futures_signals::signal::SignalExt;
-use futures_signals::signal_vec::MutableVec;
+use futures_signals::signal_vec::SignalVecExt;
+use futures_signals::signal_vec::VecDiff;
 use glam::UVec2;
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::styling::Padding;
-use quirky::widget::Widget;
-use quirky::{LayoutBox, SizeConstraint};
+use quirky::widget::{Widget, WidgetBase};
+use quirky::{layout, LayoutBox, SizeConstraint};
 use quirky_macros::widget;
+use quirky_utils::futures_map_poll::FuturesMapPoll;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,8 +23,8 @@ pub enum ChildDirection {
 
 #[widget]
 pub struct BoxLayout {
-    #[signal_prop]
-    pub children: Vec<Arc<dyn Widget>>,
+    #[signal_vec_prop]
+    pub children: Arc<dyn Widget>,
     #[signal_prop]
     #[default(ChildDirection::Vertical)]
     pub child_direction: ChildDirection,
@@ -33,37 +34,36 @@ pub struct BoxLayout {
     #[signal_prop]
     #[default(Default::default())]
     padding: Padding,
-    child_data: MutableVec<Arc<dyn Widget>>,
 }
 
 #[async_trait]
 impl<
-        ChildrenSignal: futures_signals::signal::Signal<Item = Vec<Arc<dyn Widget>>>
-            + Send
-            + Sync
-            + Unpin
-            + 'static,
-        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
         ChildDirectionSignal: futures_signals::signal::Signal<Item = ChildDirection> + Send + Sync + Unpin + 'static,
         ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
         SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
         SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
         PaddingSignal: futures_signals::signal::Signal<Item = Padding> + Send + Sync + Unpin + 'static,
         PaddingSignalFn: Fn() -> PaddingSignal + Send + Sync + 'static,
+        ChildrenSignal: futures_signals::signal_vec::SignalVec<Item = Arc<dyn Widget>>
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
+        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
     > Widget
     for BoxLayout<
-        ChildrenSignal,
-        ChildrenSignalFn,
         ChildDirectionSignal,
         ChildDirectionSignalFn,
         SizeConstraintSignal,
         SizeConstraintSignalFn,
         PaddingSignal,
         PaddingSignalFn,
+        ChildrenSignal,
+        ChildrenSignalFn,
     >
 {
     fn children(&self) -> Option<Vec<Arc<dyn Widget>>> {
-        Some(self.child_data.lock_ref().to_vec())
+        Some(self.children_prop_value.lock_ref().to_vec())
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -77,7 +77,7 @@ impl<
             return None;
         }
 
-        let child_data = self.child_data.lock_ref();
+        let child_data = self.children_prop_value.lock_ref();
 
         for c in child_data.iter().rev() {
             if let Some(mut out_path) = c.get_widget_at(pos, path.clone()) {
@@ -90,41 +90,90 @@ impl<
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
-        run_widget_with_children(
-            self.clone(),
-            self.child_data.clone(),
-            ctx,
-            (self.children)(),
+        let mut futs = self.poll_prop_futures(ctx);
+
+        let child_constraints_signal = self
+            .children_prop_value
+            .signal_vec_cloned()
+            .map(|c| c.size_constraint());
+
+        let child_futs = layout(
+            self.bounding_box().signal(),
+            child_constraints_signal,
             self.layout_extras(),
             box_layout_strategy,
         )
-        .await;
+        .for_each(|layouts| {
+            let children = self.children_prop_value.lock_mut();
+
+            layouts.iter().enumerate().for_each(|(idx, l)| {
+                children[idx].set_bounding_box(*l);
+            });
+
+            async {}
+        });
+
+        let (children_pollable_map, children_data_map) = FuturesMapPoll::new();
+
+        let child_run_fut =
+            self.children_prop_value
+                .signal_vec_cloned()
+                .for_each(move |children_diff| {
+                    match children_diff {
+                        VecDiff::Clear {} => children_data_map.clear(),
+                        VecDiff::InsertAt { value, .. } => {
+                            children_data_map.insert(&value.id(), value.run(ctx));
+                        }
+                        VecDiff::Push { value } => {
+                            children_data_map.insert(&value.id(), value.run(ctx));
+                        }
+                        VecDiff::Replace { values } => {
+                            children_data_map.clear();
+                            values.into_iter().for_each(|v| {
+                                children_data_map.insert(&v.id(), v.run(ctx));
+                            });
+                        }
+                        VecDiff::UpdateAt { value, .. } => {
+                            children_data_map.insert(&value.id(), value.run(ctx));
+                        }
+                        _ => {}
+                    }
+                    async {}
+                });
+
+        futs.push(child_futs.boxed());
+        futs.push(child_run_fut.boxed());
+        futs.push(children_pollable_map.boxed());
+
+        loop {
+            let _ = futs.select_next_some().await;
+        }
     }
 }
 
 impl<
-        ChildrenSignal: futures_signals::signal::Signal<Item = Vec<Arc<dyn Widget>>>
-            + Send
-            + Sync
-            + Unpin
-            + 'static,
-        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
         ChildDirectionSignal: futures_signals::signal::Signal<Item = ChildDirection> + Send + Sync + Unpin + 'static,
         ChildDirectionSignalFn: Fn() -> ChildDirectionSignal + Send + Sync + 'static,
         SizeConstraintSignal: futures_signals::signal::Signal<Item = SizeConstraint> + Send + Sync + Unpin + 'static,
         SizeConstraintSignalFn: Fn() -> SizeConstraintSignal + Send + Sync + 'static,
         PaddingSignal: futures_signals::signal::Signal<Item = Padding> + Send + Sync + Unpin + 'static,
         PaddingSignalFn: Fn() -> PaddingSignal + Send + Sync + 'static,
+        ChildrenSignal: futures_signals::signal_vec::SignalVec<Item = Arc<dyn Widget>>
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
+        ChildrenSignalFn: Fn() -> ChildrenSignal + Send + Sync + 'static,
     >
     BoxLayout<
-        ChildrenSignal,
-        ChildrenSignalFn,
         ChildDirectionSignal,
         ChildDirectionSignalFn,
         SizeConstraintSignal,
         SizeConstraintSignalFn,
         PaddingSignal,
         PaddingSignalFn,
+        ChildrenSignal,
+        ChildrenSignalFn,
     >
 {
     fn layout_extras(&self) -> impl Signal<Item = (ChildDirection, Padding)> {
@@ -259,7 +308,7 @@ fn box_layout_strategy(
 
 #[cfg(test)]
 mod test {
-    use crate::widgets::box_layout::BoxLayoutBuilder;
+    use crate::layouts::box_layout::BoxLayoutBuilder;
     use futures_signals::signal::Mutable;
     use quirky::{clone, SizeConstraint};
 

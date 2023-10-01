@@ -85,7 +85,7 @@ impl Widget for DrawableImage {
                                         _ => Rgba([0, 255, 0, 255]),
                                     };
 
-                                    if px >= 0.0 && px < 1024.0 && py >= 0.0 && py < 1024.0 {
+                                    if (0.0..1024.0).contains(&px) && (0.0..1024.0).contains(&py) {
                                         image.put_pixel(px as u32, py as u32, color);
                                     }
                                 }

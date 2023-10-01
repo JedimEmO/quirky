@@ -12,6 +12,10 @@ pub struct Event {
     pub widget_event: WidgetEvent,
 }
 
+pub struct WidgetSettings {
+    pub capture_events: bool,
+}
+
 pub trait WidgetBase {
     fn id(&self) -> Uuid;
     fn bounding_box(&self) -> ReadOnlyMutable<LayoutBox>;

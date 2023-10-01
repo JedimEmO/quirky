@@ -6,6 +6,7 @@ use syn::{Field, ItemStruct};
 pub(crate) struct WidgetStructParsed {
     pub ident: Ident,
     pub signal_props: Vec<FnSignalProp>,
+    pub signal_vec_props: Vec<FnSignalProp>,
     pub plain_fields: Vec<Field>,
     pub slots: Vec<SlotProp>,
 }
@@ -23,6 +24,17 @@ impl From<ItemStruct> for WidgetStructParsed {
             .cloned()
             .collect::<Vec<_>>();
 
+        let signal_vec_props = struct_
+            .fields
+            .iter()
+            .filter(|f| {
+                f.attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("signal_vec_prop"))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
         let slots = struct_
             .fields
             .iter()
@@ -34,9 +46,11 @@ impl From<ItemStruct> for WidgetStructParsed {
             .fields
             .iter()
             .filter(|f| {
-                !f.attrs
-                    .iter()
-                    .any(|attr| attr.path().is_ident("signal_prop") || attr.path().is_ident("slot"))
+                !f.attrs.iter().any(|attr| {
+                    attr.path().is_ident("signal_prop")
+                        || attr.path().is_ident("slot")
+                        || attr.path().is_ident("signal_vec_prop")
+                })
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -44,6 +58,7 @@ impl From<ItemStruct> for WidgetStructParsed {
         Self {
             ident: struct_.ident,
             signal_props: signal_props.into_iter().map(|v| v.into()).collect(),
+            signal_vec_props: signal_vec_props.into_iter().map(|v| v.into()).collect(),
             plain_fields,
             slots: slots.into_iter().map(|v| v.into()).collect(),
         }

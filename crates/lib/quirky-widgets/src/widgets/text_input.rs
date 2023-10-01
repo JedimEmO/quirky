@@ -1,18 +1,18 @@
+use crate::layouts::anchored_container::{AnchorPoint, AnchoredContainerBuilder};
 use crate::primitives::border_box::{BorderBox, BorderBoxData};
 use crate::widgets::label::{FontSettings, LabelBuilder};
-use crate::widgets::layout_item::LayoutItemBuilder;
 use crate::widgets::stack::StackBuilder;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
-use futures_signals::signal::{always, Mutable, Signal, SignalExt};
+use futures_signals::signal::{Mutable, Signal, SignalExt};
 use futures_signals::signal_vec::MutableVec;
-use futures_signals::signal_vec::SignalVecExt;
 use glam::UVec2;
 use glyphon::{FamilyOwned, Metrics, Style, Weight};
 use quirky::primitives::quad::{Quad, Quads};
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::styling::Padding;
 use quirky::widget::{Widget, WidgetBase};
 use quirky::widgets::event_subscribe::run_subscribe_to_events;
 use quirky::{clone, FocusState, KeyCode, KeyboardEvent, MouseEvent, SizeConstraint, WidgetEvent};
@@ -154,7 +154,7 @@ impl<
                             if key_code == KeyCode::Key0 {
                                 Some('0')
                             } else {
-                                Some(('1' as u8 + key_code as u8) as char)
+                                Some((b'1' + key_code as u8) as char)
                             }
                         } else if key_code < KeyCode::A && modifier.shift {
                             if key_code == KeyCode::Key1 {
@@ -181,9 +181,9 @@ impl<
                                 None
                             }
                         } else if key_code < KeyCode::Z && !modifier.shift {
-                            Some(('a' as u8 + key_code as u8 - KeyCode::A as u8) as char)
+                            Some((b'a' + key_code as u8 - KeyCode::A as u8) as char)
                         } else if key_code < KeyCode::Z && modifier.shift {
-                            Some(('A' as u8 + key_code as u8 - KeyCode::A as u8) as char)
+                            Some((b'A' + key_code as u8 - KeyCode::A as u8) as char)
                         } else if key_code == KeyCode::Space {
                             Some(' ')
                         } else if key_code == KeyCode::Comma {
@@ -208,11 +208,9 @@ impl<
                         let current_value = self.text_value_prop_value.get_cloned().unwrap();
 
                         if let Some(new_char) = char {
-                            (self.on_text_change)(
-                                format!("{}{}", current_value, new_char.to_string()).into(),
-                            );
+                            (self.on_text_change)(format!("{}{}", current_value, new_char));
                         } else {
-                            if key_code == KeyCode::Backspace && current_value.len() > 0 {
+                            if key_code == KeyCode::Backspace && !current_value.is_empty() {
                                 if modifier.ctrl {
                                     (self.on_text_change)("".to_string());
                                 } else {
@@ -250,37 +248,138 @@ pub fn text_input(
     on_submit: impl Fn(()) -> () + Send + Sync + 'static,
 ) -> Arc<dyn Widget> {
     let value_bc = value_signal.broadcast();
+    let is_focused = Mutable::new(false);
+
+    let label_value = Mutable::new("Some label".to_string());
+
+    let label = map_ref! {
+        let label = label_value.signal_cloned(),
+        let value = value_bc.signal_cloned() => {
+            if value.len() < 5 {
+                label.clone()
+            } else {
+                "The value is 5 or more characters".to_string()
+            }
+        }
+    }
+    .broadcast();
+
+    let lift_label = map_ref! {
+        let focused = is_focused.signal(),
+        let empty = value_bc.signal_cloned().map(|v| v.is_empty()) => {
+            *focused || !*empty
+        }
+    }
+    .broadcast();
 
     let children = MutableVec::new_with_values(vec![
         TextInputBuilder::new()
             .text_value_signal(clone!(value_bc, move || value_bc.signal_cloned()))
             .on_text_change(on_value)
             .on_submit(on_submit)
+            .on_focus_change(clone!(is_focused, move |new_focus| {
+                is_focused.set(new_focus == FocusState::Focused)
+            }))
             .build(),
-        LayoutItemBuilder::new()
+        AnchoredContainerBuilder::new()
+            .anchor_point(AnchorPoint::Center)
+            .child_signal(clone!(
+                label,
+                clone!(lift_label, move || {
+                    lift_label.signal().map(clone!(label, move |has_focus| {
+                        if !has_focus {
+                            LabelBuilder::new()
+                                .font_settings(FontSettings {
+                                    metrics: Metrics {
+                                        font_size: 14.0,
+                                        line_height: 14.0,
+                                    },
+                                    family: FamilyOwned::Monospace,
+                                    stretch: Default::default(),
+                                    style: Style::Italic,
+                                    weight: Weight::THIN,
+                                })
+                                .text_color([0.15, 0.15, 0.15])
+                                .text_signal(clone!(label, move || label
+                                    .signal_cloned()
+                                    .map(|v| v.into())))
+                                .build()
+                        } else {
+                            StackBuilder::new().build()
+                        }
+                    }))
+                })
+            ))
+            .build(),
+        AnchoredContainerBuilder::new()
+            .anchor_point(AnchorPoint::TopLeft)
+            .padding(Padding {
+                left: 2,
+                right: 0,
+                top: 1,
+                bottom: 0,
+            })
+            .child_signal(clone!(
+                value_bc,
+                clone!(
+                    label,
+                    clone!(lift_label, move || lift_label.signal().map(clone!(
+                        value_bc,
+                        clone!(label, move |has_focus| {
+                            if has_focus {
+                                LabelBuilder::new()
+                                    .font_settings(FontSettings {
+                                        metrics: Metrics {
+                                            font_size: 12.0,
+                                            line_height: 10.0,
+                                        },
+                                        family: FamilyOwned::Monospace,
+                                        stretch: Default::default(),
+                                        style: Style::Italic,
+                                        weight: Weight::THIN,
+                                    })
+                                    .text_color_signal(clone!(value_bc, move || value_bc
+                                        .signal_cloned()
+                                        .map(|v| {
+                                            if v.len() < 5 {
+                                                [0.15, 0.15, 0.15]
+                                            } else {
+                                                [1.0, 0.15, 0.15]
+                                            }
+                                        })))
+                                    .text_signal(clone!(label, move || label
+                                        .signal_cloned()
+                                        .map(|v| v.into())))
+                                    .build()
+                            } else {
+                                StackBuilder::new().build()
+                            }
+                        })
+                    )))
+                )
+            ))
+            .build(),
+        AnchoredContainerBuilder::new()
+            .anchor_point(AnchorPoint::CenterLeft)
+            .padding(Padding {
+                left: 4,
+                right: 0,
+                top: 0,
+                bottom: 0,
+            })
             .child(
                 LabelBuilder::new()
                     .font_settings(FontSettings {
                         metrics: Metrics {
-                            font_size: 16.0,
-                            line_height: 16.0,
+                            font_size: 15.0,
+                            line_height: 15.0,
                         },
                         family: FamilyOwned::Monospace,
                         stretch: Default::default(),
-                        style: Style::Italic,
-                        weight: Weight::THIN,
+                        style: Style::Normal,
+                        weight: Weight::NORMAL,
                     })
-                    .text_color([0.1, 0.1, 0.1])
-                    .text_signal(clone!(value_bc, move || {
-                        let is_empty_sig = value_bc.signal_cloned().map(|v| v.len() == 0).dedupe();
-                        is_empty_sig.map(|e| if e { "Some input...".into() } else { "".into() })
-                    }))
-                    .build(),
-            )
-            .build(),
-        LayoutItemBuilder::new()
-            .child(
-                LabelBuilder::new()
+                    .text_color([0.2, 0.2, 0.2])
                     .text_signal(clone!(value_bc, move || value_bc
                         .signal_cloned()
                         .map(|v| v.into())))
@@ -291,8 +390,6 @@ pub fn text_input(
 
     StackBuilder::new()
         .size_constraint(SizeConstraint::MaxHeight(40))
-        .children_signal(clone!(children, move || children
-            .signal_vec_cloned()
-            .to_signal_cloned()))
+        .children_signal_vec(clone!(children, move || children.signal_vec_cloned()))
         .build()
 }

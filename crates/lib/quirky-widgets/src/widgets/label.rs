@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
+use futures_signals::map_ref;
 use futures_signals::signal::{Signal, SignalExt};
 use glam::UVec2;
 use glyphon::{
@@ -8,7 +9,7 @@ use glyphon::{
 };
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
 use quirky::quirky_app_context::QuirkyAppContext;
-use quirky::widget::{default_run, Widget};
+use quirky::widget::{Widget, WidgetBase};
 use quirky::SizeConstraint;
 use quirky_macros::widget;
 use std::borrow::BorrowMut;
@@ -83,36 +84,40 @@ impl<
 
         let buffer = if let Some(mut buf) = buffer_lock.take() {
             buf.set_size(
-                &mut paint_quirky_context.font_system,
+                paint_quirky_context.font_system,
                 bb.size.x as f32,
                 bb.size.y as f32,
             );
 
             buf.set_text(
-                &mut paint_quirky_context.font_system,
-                &self.text_prop_value.get_cloned().unwrap(),
+                paint_quirky_context.font_system,
+                &self.text_prop_value.get_cloned().unwrap_or("".into()),
                 Attrs::new().family(font_settings.family.as_family()),
                 Shaping::Advanced,
             );
-            buf.shape_until_scroll(&mut paint_quirky_context.font_system);
+            buf.shape_until_scroll(paint_quirky_context.font_system);
             buf
         } else {
             let mut buffer = Buffer::new(paint_quirky_context.font_system, font_settings.metrics);
 
             buffer.set_size(
-                &mut paint_quirky_context.font_system,
+                paint_quirky_context.font_system,
                 bb.size.x as f32,
                 bb.size.y as f32,
             );
 
             buffer.set_text(
-                &mut paint_quirky_context.font_system,
-                &self.text_prop_value.get_cloned().unwrap(),
+                paint_quirky_context.font_system,
+                &self
+                    .text_prop_value
+                    .get_cloned()
+                    .or(Some("".into()))
+                    .unwrap(),
                 Attrs::new().family(font_settings.family.as_family()),
                 Shaping::Advanced,
             );
 
-            buffer.shape_until_scroll(&mut paint_quirky_context.font_system);
+            buffer.shape_until_scroll(paint_quirky_context.font_system);
 
             buffer
         };
@@ -170,14 +175,31 @@ impl<
             let metrics = font_settings.as_ref().unwrap().metrics;
             let len = txt.len();
 
-            SizeConstraint::MinSize(UVec2::new(
-                (metrics.font_size * len as f32 / 1.8) as u32,
+            SizeConstraint::MaxSize(UVec2::new(
+                (metrics.font_size * len as f32 / 1.2) as u32,
                 metrics.line_height as u32,
             ))
         }))
     }
 
     async fn run(self: Arc<Self>, quirky_context: &QuirkyAppContext) {
-        default_run(self, quirky_context).await
+        let change_sig = map_ref! {
+            let _bb = self.bounding_box.signal(),
+            let _txt = self.text_color_prop_value.signal_cloned(),
+            let _font_settings = self.font_settings_prop_value.signal_cloned(),
+            let _text_color = self.text_color_prop_value.signal_cloned() => {}
+        }
+        .for_each(|_| {
+            self.set_dirty();
+            async move { quirky_context.signal_redraw().await }
+        });
+
+        let mut futs = self.poll_prop_futures(quirky_context);
+
+        futs.push(change_sig.boxed());
+
+        loop {
+            let _n = futs.select_next_some().await;
+        }
     }
 }

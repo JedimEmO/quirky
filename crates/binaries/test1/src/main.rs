@@ -5,14 +5,14 @@ use lipsum::lipsum_words;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
-use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::layouts::anchored_container::AnchoredContainerBuilder;
+use quirky_widgets::layouts::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky_widgets::widgets::button::ButtonBuilder;
 use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
 use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};
-use quirky_widgets::widgets::layout_item::LayoutItemBuilder;
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_widgets::widgets::stack::StackBuilder;
-use quirky_widgets::widgets::text_input::{text_input, TextInputBuilder};
+use quirky_widgets::widgets::text_input::text_input;
 use quirky_widgets::widgets::text_layout::TextLayoutBuilder;
 use quirky_winit::QuirkyWinitApp;
 use rand::random;
@@ -68,15 +68,11 @@ fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
             SlabBuilder::new().color([0.01, 0.05, 0.01, 1.0]).build(),
             SlabBuilder::new()
                 .on_event(clone!(text, move |e| {
-                    match e.widget_event {
-                        WidgetEvent::MouseEvent { event } => match event {
-                            MouseEvent::ButtonDown { .. } => {
-                                text.set(format!("{}!", text.get_cloned()));
-                            }
-                            _ => {}
-                        },
-
-                        _ => {}
+                    if let WidgetEvent::MouseEvent {
+                        event: MouseEvent::ButtonDown { .. },
+                    } = e.widget_event
+                    {
+                        text.set(format!("{}!", text.get_cloned()));
                     }
                 }))
                 .color([0.01, 0.01, 0.1, 0.2])
@@ -115,11 +111,11 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                     .children(vec![
                         text_input(
                             text.signal_cloned(),
-                            clone!(text, move |v| { text.set(v.to_string()) }),
+                            clone!(text, move |v| { text.set(v) }),
                             |_| println!("submitted"),
                         ),
                         stack_panel(text.clone()),
-                        LayoutItemBuilder::new()
+                        AnchoredContainerBuilder::new()
                             .child(
                                 LabelBuilder::new()
                                     .font_settings(FontSettings {
@@ -156,7 +152,7 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
                         TextLayoutBuilder::new()
                             .text(lipsum_words(400).into())
                             .build(),
-                        LayoutItemBuilder::new()
+                        AnchoredContainerBuilder::new()
                             .child(
                                 SlabBuilder::new()
                                     .size_constraint(SizeConstraint::MinSize(UVec2::new(100, 20)))
@@ -178,7 +174,9 @@ fn simple_panel_layout() -> Arc<dyn Widget> {
     ]);
 
     BoxLayoutBuilder::new()
-        .children_signal(clone!(children, move || children.signal_cloned()))
+        .children_signal_vec(clone!(children, move || children
+            .signal_cloned()
+            .to_signal_vec()))
         .child_direction(ChildDirection::Vertical)
         .build()
 }

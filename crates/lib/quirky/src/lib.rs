@@ -259,7 +259,6 @@ pub struct QuirkyApp {
     camera_bind_group_layout: BindGroupLayout,
     camera_bind_group: BindGroup,
     signal_dirty_rx: async_std::channel::Receiver<()>,
-    drawables_cache: Mutex<VecDeque<(Uuid, Vec<Box<dyn DrawablePrimitive>>)>>,
 }
 
 impl QuirkyApp {
@@ -301,7 +300,6 @@ impl QuirkyApp {
             camera_bind_group_layout,
             camera_bind_group,
             signal_dirty_rx: rx,
-            drawables_cache: Mutex::new(VecDeque::with_capacity(10000)),
         }
     }
 
@@ -569,6 +567,7 @@ fn next_drawable_list(
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SizeConstraint {
     MinSize(UVec2),
+    MaxSize(UVec2),
     #[default]
     Unconstrained,
     MaxHeight(u32),
@@ -591,11 +590,10 @@ impl LayoutBox {
 
 pub fn layout<TExtras: Send>(
     container_box: impl Signal<Item = LayoutBox> + Send,
-    constraints: impl Signal<Item = Vec<Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>>> + Send,
+    constraints: impl SignalVec<Item = Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>> + Send,
     extras_signal: impl Signal<Item = TExtras> + Send,
     layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
 ) -> impl Signal<Item = Vec<LayoutBox>> + Send {
-    let constraints = constraints.to_signal_vec();
     let constraints = constraints.map_signal(|x| x).to_signal_cloned();
 
     map_ref! {

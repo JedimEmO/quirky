@@ -48,19 +48,15 @@ impl<
         let mut buffer_lock = block_on(self.text_buffer.lock());
 
         let buffer = if let Some(mut buf) = buffer_lock.take() {
-            buf.set_size(
-                &mut paint_ctx.font_system,
-                bb.size.x as f32,
-                bb.size.y as f32,
-            );
+            buf.set_size(paint_ctx.font_system, bb.size.x as f32, bb.size.y as f32);
 
             buf.set_text(
-                &mut paint_ctx.font_system,
+                paint_ctx.font_system,
                 &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
-            buf.shape_until_scroll(&mut paint_ctx.font_system);
+            buf.shape_until_scroll(paint_ctx.font_system);
             buf
         } else {
             let mut buffer = Buffer::new(
@@ -71,20 +67,16 @@ impl<
                 },
             );
 
-            buffer.set_size(
-                &mut paint_ctx.font_system,
-                bb.size.x as f32,
-                bb.size.y as f32,
-            );
+            buffer.set_size(paint_ctx.font_system, bb.size.x as f32, bb.size.y as f32);
 
             buffer.set_text(
-                &mut paint_ctx.font_system,
+                paint_ctx.font_system,
                 &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
 
-            buffer.shape_until_scroll(&mut paint_ctx.font_system);
+            buffer.shape_until_scroll(paint_ctx.font_system);
 
             buffer
         };
@@ -137,6 +129,13 @@ impl<
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let mut futs = self.poll_prop_futures(ctx);
+
+        let bb_poll = self.bounding_box.signal().for_each(|_| {
+            self.set_dirty();
+            async move { ctx.signal_redraw().await }
+        });
+
+        futs.push(bb_poll.boxed());
 
         loop {
             let _n = futs.select_next_some().await;

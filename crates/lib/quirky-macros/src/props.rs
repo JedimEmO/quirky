@@ -41,10 +41,17 @@ impl From<Field> for FnSignalProp {
                 .as_str(),
         )
         .expect("failed to parse signal name");
-        let signal_type = syn::parse_str::<Type>(
-            format!("futures_signals::signal::Signal<Item={}>", ty).as_str(),
-        )
-        .expect("failed to parse signal type");
+
+        let signal_type = if f.attrs.iter().any(|a| a.path().is_ident("signal_vec_prop")) {
+            syn::parse_str::<Type>(
+                format!("futures_signals::signal_vec::SignalVec<Item={}>", ty).as_str(),
+            )
+            .expect("failed to parse signal type")
+        } else {
+            syn::parse_str::<Type>(format!("futures_signals::signal::Signal<Item={}>", ty).as_str())
+                .expect("failed to parse signal type")
+        };
+
         let signal_fn_name =
             syn::parse_str::<Ident>(format!("{}SignalFn", ident).to_case(Case::Pascal).as_str())
                 .expect("failed to parse signal fn name");

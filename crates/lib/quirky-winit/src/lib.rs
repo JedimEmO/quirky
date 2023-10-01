@@ -14,7 +14,7 @@ use wgpu::{
     Backends, Instance, InstanceDescriptor, PresentMode, Surface, SurfaceCapabilities,
     TextureFormat,
 };
-use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
@@ -109,7 +109,6 @@ impl QuirkyWinitApp {
             .take()
             .expect("invalid QuirkiWinitApp: missing event loop");
 
-        let mut mouse_pos = PhysicalPosition::default();
         let prev_hovered: Mutable<Option<Uuid>> = Default::default();
         let target_widget: Mutable<Option<Uuid>> = Default::default();
         let prev_drag_pos: Mutable<Option<UVec2>> = Default::default();
@@ -199,13 +198,12 @@ impl QuirkyWinitApp {
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         if input.state == ElementState::Pressed {
-                            let target = prev_hovered.get().or(Some(Uuid::nil())).unwrap();
+                            let target = prev_hovered.get().unwrap_or(Uuid::nil());
 
                             let code = input
                                 .virtual_keycode
-                                .map(|code| winit_keycode_to_quirky(code))
-                                .or(Some(KeyCode::Unknown))
-                                .unwrap();
+                                .map(winit_keycode_to_quirky)
+                                .unwrap_or(KeyCode::Unknown);
 
                             self.quirky_app.dispatch_event_to_widget(
                                 target,
@@ -270,8 +268,7 @@ impl QuirkyWinitApp {
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        mouse_pos = position;
-                        let pos = UVec2::new(mouse_pos.x as u32, mouse_pos.y as u32);
+                        let pos = UVec2::new(position.x as u32, position.y as u32);
                         current_mouse_pos.set(pos);
                     }
                     _ => {}

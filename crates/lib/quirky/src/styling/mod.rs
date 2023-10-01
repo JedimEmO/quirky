@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub struct Padding {
     pub left: u32,
     pub right: u32,

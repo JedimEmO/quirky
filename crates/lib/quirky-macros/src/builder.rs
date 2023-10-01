@@ -35,6 +35,20 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
+        let builder_struct_vec_members = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    signal_fn_name,
+                    ..
+                } = f;
+                quote! { #field_name: Option<#signal_fn_name> }
+            })
+            .collect::<Vec<_>>();
+
         let builder_struct_slot_members = self
             .widget_struct
             .slots
@@ -49,10 +63,14 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        vec![builder_struct_members, builder_struct_slot_members]
-            .into_iter()
-            .flatten()
-            .collect()
+        vec![
+            builder_struct_members,
+            builder_struct_slot_members,
+            builder_struct_vec_members,
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     pub fn member_field_names(&self) -> Vec<Ident> {
@@ -62,6 +80,14 @@ impl BuilderStruct {
             .iter()
             .map(|f| f.field_name.clone())
             .collect::<Vec<_>>();
+
+        let signal_vec_field_names = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| f.field_name.clone())
+            .collect::<Vec<_>>();
+
         let slot_field_names = self
             .widget_struct
             .slots
@@ -69,7 +95,7 @@ impl BuilderStruct {
             .map(|f| f.slot_name.clone())
             .collect::<Vec<_>>();
 
-        vec![signal_field_names, slot_field_names]
+        vec![signal_field_names, slot_field_names, signal_vec_field_names]
             .into_iter()
             .flatten()
             .collect()
@@ -105,6 +131,25 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
+        let builder_struct_signal_vec_members_defaults = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    default,
+                    ..
+                } = f;
+
+                if let Some(default) = default {
+                    quote! { #field_name: Some(|| futures_signals::signal_vec::always(#default)) }
+                } else {
+                    quote! { #field_name: None }
+                }
+            })
+            .collect::<Vec<_>>();
+
         let builder_struct_slot_members_defaults = self
             .widget_struct
             .slots
@@ -119,6 +164,7 @@ impl BuilderStruct {
         vec![
             builder_struct_members_defaults,
             builder_struct_slot_members_defaults,
+            builder_struct_signal_vec_members_defaults,
         ]
         .into_iter()
         .flatten()
@@ -137,6 +183,13 @@ impl BuilderStruct {
                 quote! { #signal_name: #signal_type + 'static = futures_signals::signal::Always<#field_type>, #signal_fn_name: Fn() -> #signal_name = fn() -> futures_signals::signal::Always<#field_type>}
             }).collect::<Vec<_>>();
 
+        let signal_vec_params = self.widget_struct.signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp { signal_name, signal_type, signal_fn_name, field_type, .. } = f;
+                quote! { #signal_name: #signal_type + 'static = futures_signals::signal_vec::Always<#field_type>, #signal_fn_name: Fn() -> #signal_name = fn() -> futures_signals::signal_vec::Always<#field_type>}
+            }).collect::<Vec<_>>();
+
         let slot_params = self
             .widget_struct
             .slots
@@ -153,7 +206,7 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        vec![signal_params, slot_params]
+        vec![signal_params, slot_params, signal_vec_params]
             .into_iter()
             .flatten()
             .collect()
@@ -165,6 +218,18 @@ impl BuilderStruct {
     /// ```
     pub fn all_generic_params(&self) -> Vec<TokenStream> {
         let signal_params = self.widget_struct.signal_props.iter()
+            .map(|f| {
+                let FnSignalProp {
+                    signal_name,
+                    signal_type,
+                    signal_fn_name,
+                    ..
+                } = f;
+                quote! { #signal_name: #signal_type + Send + Sync + Unpin + 'static, #signal_fn_name: Fn() -> #signal_name + Send + Sync + 'static }
+            })
+            .collect::<Vec<_>>();
+
+        let signal_vec_params = self.widget_struct.signal_vec_props.iter()
             .map(|f| {
                 let FnSignalProp {
                     signal_name,
@@ -191,7 +256,7 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        vec![signal_params, slot_params]
+        vec![signal_params, slot_params, signal_vec_params]
             .into_iter()
             .flatten()
             .collect()
@@ -216,6 +281,20 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
+        let signal_vec_param_names = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    signal_name,
+                    signal_fn_name,
+                    ..
+                } = f;
+                quote! { #signal_name, #signal_fn_name }
+            })
+            .collect::<Vec<_>>();
+
         let slot_param_names = self
             .widget_struct
             .slots
@@ -226,7 +305,7 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
-        vec![signal_param_names, slot_param_names]
+        vec![signal_param_names, slot_param_names, signal_vec_param_names]
             .into_iter()
             .flatten()
             .collect()
@@ -282,6 +361,41 @@ impl BuilderStruct {
         }
         }).collect::<Vec<_>>();
 
+        let builder_field_signal_vec_setters = self.widget_struct.signal_vec_props.iter().map(|f| {
+            let FnSignalProp { field_name, field_type, signal_name,  .. } = f;
+            let fn_sig_name = syn::parse_str::<Ident>(format!("{}_signal_vec", field_name).as_str()).expect("fn sig name parse error");
+
+            let other_fields = all_member_names.iter().filter_map(|f| {
+                if f == field_name {
+                    None
+                } else {
+                    Some(quote! {#f: self.#f })
+                }
+            }).collect::<Vec<_>>();
+
+            let builder_struct_generics_params_names_out = builder_struct_generics_params_names
+                .iter()
+                .map(|f| {
+                    if f.to_string().contains(&signal_name.to_string()) {
+                        quote! { T, TFN }
+                    } else {
+                        quote! { #f }
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            quote! {
+            impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
+                pub fn #fn_sig_name<T: futures_signals::signal_vec::SignalVec<Item=#field_type> + Sync + Send + Unpin, TFN: Fn() -> T>(self, value: TFN) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
+                    #builder_name {
+                        #field_name: Some(value),
+                        #(#other_fields),*
+                    }
+                }
+            }
+        }
+        }).collect::<Vec<_>>();
+
         let builder_field_value_setters = self.widget_struct.signal_props.iter().map(|f| {
             let FnSignalProp { field_name, field_type, signal_name, signal_type: _, signal_fn_name: _, default: _, ..} = f;
 
@@ -309,6 +423,40 @@ impl BuilderStruct {
                 pub fn #field_name(self, value: #field_type) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
                     #builder_name {
                         #field_name: Some(Box::new(move || futures_signals::signal::always(value.clone()))),
+                        #(#other_fields),*
+                    }
+                }
+            }
+        }
+        }).collect::<Vec<_>>();
+
+        let builder_field_vec_value_setters = self.widget_struct.signal_vec_props.iter().map(|f| {
+            let FnSignalProp { field_name, field_type, signal_name, signal_type: _, signal_fn_name: _, default: _, ..} = f;
+
+            let other_fields = all_member_names.iter().filter_map(|f| {
+                if f == field_name {
+                    None
+                } else {
+                    Some(quote! {#f: self.#f })
+                }
+            }).collect::<Vec<_>>();
+
+            let builder_struct_generics_params_names_out = builder_struct_generics_params_names
+                .iter()
+                .map(|f| {
+                    if f.to_string().contains(&signal_name.to_string()) {
+                        quote! { futures_signals::signal_vec::Always<#field_type>, Box<dyn Fn() -> futures_signals::signal_vec::Always<#field_type> + Send + Sync>  }
+                    } else {
+                        quote! { #f }
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            quote! {
+            impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
+                pub fn #field_name(self, value: Vec<#field_type>) -> #builder_name<#(#builder_struct_generics_params_names_out),*> {
+                    #builder_name {
+                        #field_name: Some(Box::new(move || futures_signals::signal_vec::always(value.clone()))),
                         #(#other_fields),*
                     }
                 }
@@ -356,6 +504,8 @@ impl BuilderStruct {
             builder_field_signal_setters,
             builder_field_value_setters,
             builder_field_slot_setters,
+            builder_field_signal_vec_setters,
+            builder_field_vec_value_setters,
         ]
         .into_iter()
         .flatten()
@@ -379,9 +529,39 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
+        let signal_vec_prop_value_members = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    field_type,
+                    ..
+                } = f;
+                let name = syn::parse_str::<Ident>(format!("{}_prop_value", field_name).as_str())
+                    .expect("f");
+                quote! { #name: futures_signals::signal_vec::MutableVec<#field_type>}
+            })
+            .collect::<Vec<_>>();
+
         let real_struct_members = self
             .widget_struct
             .signal_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    signal_fn_name,
+                    ..
+                } = f;
+                quote! { #field_name: #signal_fn_name }
+            })
+            .collect::<Vec<_>>();
+
+        let real_struct_vec_members = self
+            .widget_struct
+            .signal_vec_props
             .iter()
             .map(|f| {
                 let FnSignalProp {
@@ -424,6 +604,8 @@ impl BuilderStruct {
             real_struct_slot_members,
             struct_fields_decl,
             signal_prop_value_members,
+            real_struct_vec_members,
+            signal_vec_prop_value_members,
         ]
         .into_iter()
         .flatten()
@@ -453,9 +635,43 @@ impl BuilderStruct {
             })
             .collect::<Vec<_>>();
 
+        let signal_vec_prop_value_members_ctor = self
+            .widget_struct
+            .signal_vec_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp {
+                    field_name,
+                    default,
+                    ..
+                } = f;
+
+                let name = syn::parse_str::<Ident>(format!("{}_prop_value", field_name).as_str())
+                    .expect("f");
+
+                if let Some(default) = default {
+                    quote! { #name: futures_signals::signal_vec::MutableVec::new_with_values(#default) }
+                } else {
+                    quote! { #name: futures_signals::signal_vec::MutableVec::new() }
+                }
+            })
+            .collect::<Vec<_>>();
+
         let real_struct_member_ctors = self
             .widget_struct
             .signal_props
+            .iter()
+            .map(|f| {
+                let FnSignalProp { field_name, .. } = f;
+                let name = field_name.to_string();
+
+                quote! { #field_name: self.#field_name.expect(format!("missing signal {}", #name).as_str()) }
+            })
+            .collect::<Vec<_>>();
+
+        let real_struct_vec_member_ctors = self
+            .widget_struct
+            .signal_vec_props
             .iter()
             .map(|f| {
                 let FnSignalProp { field_name, .. } = f;
@@ -508,6 +724,8 @@ impl BuilderStruct {
             real_struct_member_slot_ctors,
             struct_fields_init,
             signal_prop_value_members_ctor,
+            real_struct_vec_member_ctors,
+            signal_vec_prop_value_members_ctor,
         ]
         .into_iter()
         .flatten()
@@ -525,11 +743,23 @@ impl BuilderStruct {
             }
         });
 
+        let sig_vec_gens = self.widget_struct.signal_vec_props.iter().map(|s| {
+            let runner = self.sig_vec_runner(s);
+
+            quote! {
+                #runner.boxed()
+            }
+        });
+
         quote! {
             fn poll_prop_futures<'a>(&'a self, ctx: &'a quirky::quirky_app_context::QuirkyAppContext) -> futures::stream::FuturesUnordered<futures::future::BoxFuture<'a, ()>> {
                 let mut futs = futures::stream::FuturesUnordered::new();
 
                 for f in vec![#(#sig_gens),*] {
+                    futs.push(f);
+                }
+
+                for f in vec![#(#sig_vec_gens),*] {
                     futs.push(f);
                 }
 
@@ -546,6 +776,35 @@ impl BuilderStruct {
 
                 futs
             }
+        }
+    }
+
+    fn sig_vec_runner(&self, sig: &FnSignalProp) -> TokenStream {
+        let sig_name = sig.field_name.clone();
+        let sig_propname =
+            syn::parse_str::<Ident>(format!("{}_prop_value", sig_name).as_str()).expect("f");
+
+        let repaint = if sig.force_repaint {
+            quote! { self.set_dirty(); }
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            (self.#sig_name)().for_each(|incoming_value| {
+                let mut locked_vec = self.#sig_propname.lock_mut();
+
+                futures_signals::signal_vec::MutableVecLockMut::apply_vec_diff(
+                        &mut locked_vec,
+                        incoming_value,
+                    );
+                let ctx = &*ctx;
+                #repaint
+
+                async move {
+                    ctx.signal_redraw().await;
+                }
+            })
         }
     }
 
@@ -615,7 +874,7 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
         #(#field_setter)*
 
         impl<#(#builder_struct_generics_params),*> #builder_name<#(#builder_struct_generics_params_names),*> {
-            pub fn build(self) -> std::sync::Arc<dyn Widget + 'static> {
+            pub fn build(self) -> std::sync::Arc<dyn quirky::widget::Widget + 'static> {
                 let out = #struct_name {
                     id: uuid::Uuid::new_v4(),
                     bounding_box: Default::default(),
@@ -671,7 +930,7 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
             }
 
             fn set_cached_primitives(&self, primitives: Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>>) -> () {
-                self.cached_primitives.lock_mut().insert(primitives.or(Some(vec![])).unwrap());
+                let _ = self.cached_primitives.lock_mut().insert(primitives.or(Some(vec![])).unwrap());
             }
 
             #props_runner

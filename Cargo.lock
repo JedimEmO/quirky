@@ -1938,6 +1938,7 @@ dependencies = [
  "image",
  "quirky",
  "quirky-macros",
+ "quirky-utils",
  "uuid",
  "wgpu 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wgpu_macros",

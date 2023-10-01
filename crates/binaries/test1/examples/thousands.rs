@@ -1,6 +1,6 @@
 use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
-use quirky_widgets::widgets::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::layouts::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_winit::QuirkyWinitApp;
 use std::sync::Arc;
@@ -25,25 +25,87 @@ async fn main() {
 fn thousands_layout() -> Arc<dyn Widget> {
     BoxLayoutBuilder::new()
         .child_direction(ChildDirection::Vertical)
-        .children((0..100).map(|y| hundreds_row(y)).collect())
+        .children(vec![
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Vertical)
+                .children((0..50).map(hundreds_row).collect())
+                .build(),
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Vertical)
+                .children((0..50).map(hundreds_row).collect())
+                .build(),
+        ])
         .build()
 }
 
 fn hundreds_row(y: i32) -> Arc<dyn Widget> {
     BoxLayoutBuilder::new()
         .child_direction(ChildDirection::Horizontal)
-        .children(
-            (0..200)
-                .map(|x| {
-                    SlabBuilder::new()
-                        .color(if (x + y) % 2 == 0 {
-                            [0.0, 0.1, 0.0, 1.0]
-                        } else {
-                            [0.1, 0.0, 0.0, 1.0]
+        .children(vec![
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Horizontal)
+                .children(
+                    (0..50)
+                        .map(|x| {
+                            SlabBuilder::new()
+                                .color(if (x + y) % 2 == 0 {
+                                    [0.0, 0.1, 0.0, 1.0]
+                                } else {
+                                    [0.1, 0.0, 0.0, 1.0]
+                                })
+                                .build()
                         })
-                        .build()
-                })
-                .collect(),
-        )
+                        .collect(),
+                )
+                .build(),
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Horizontal)
+                .children(
+                    (0..50)
+                        .map(|x| {
+                            SlabBuilder::new()
+                                .color(if (x + y) % 2 == 0 {
+                                    [0.0, 0.1, 0.0, 1.0]
+                                } else {
+                                    [0.1, 0.0, 0.0, 1.0]
+                                })
+                                .build()
+                        })
+                        .collect(),
+                )
+                .build(),
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Horizontal)
+                .children(
+                    (0..50)
+                        .map(|x| {
+                            SlabBuilder::new()
+                                .color(if (x + y) % 2 == 0 {
+                                    [0.0, 0.1, 0.0, 1.0]
+                                } else {
+                                    [0.1, 0.0, 0.0, 1.0]
+                                })
+                                .build()
+                        })
+                        .collect(),
+                )
+                .build(),
+            BoxLayoutBuilder::new()
+                .child_direction(ChildDirection::Horizontal)
+                .children(
+                    (0..50)
+                        .map(|x| {
+                            SlabBuilder::new()
+                                .color(if (x + y) % 2 == 0 {
+                                    [0.0, 0.1, 0.0, 1.0]
+                                } else {
+                                    [0.1, 0.0, 0.0, 1.0]
+                                })
+                                .build()
+                        })
+                        .collect(),
+                )
+                .build(),
+        ])
         .build()
 }

@@ -1,4 +1,3 @@
-use crate::primitives::border_box::{BorderBox, BorderBoxData};
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
@@ -11,7 +10,7 @@ use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::widget::{Event, Widget, WidgetBase};
 use quirky::widgets::event_subscribe::run_subscribe_to_events;
 use quirky::SizeConstraint;
-use quirky::{clone, MouseEvent, WidgetEvent};
+use quirky::{MouseEvent, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -29,8 +28,8 @@ pub struct Slab {
     on_event: Event,
     #[default(Mutable::new(Arc::new([])))]
     quad_geometry: Mutable<Arc<[Quad]>>,
-    border_box_data: Mutable<BorderBoxData>,
 }
+
 impl<
         ColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
         ColorSignalFn: Fn() -> ColorSignal + Send + Sync + 'static,
@@ -56,15 +55,6 @@ impl<
 
         self.quad_geometry
             .set(Arc::new([Quad::new(bb.pos, size, color)]));
-
-        self.border_box_data.set(BorderBoxData {
-            pos: *bb.pos.as_vec2().as_ref(),
-            size: *size.as_vec2().as_ref(),
-            color: [0.02, 0.02, 0.02, 1.0],
-            shade_color: [0.02, 0.02, 0.02, 1.0],
-            border_side: 0,
-            borders: [1, 1, 1, 1],
-        });
     }
 }
 
@@ -91,12 +81,8 @@ impl<
     ) -> Vec<Box<dyn DrawablePrimitive>> {
         self.regenerate_primitives();
         let quads = Box::new(Quads::new(self.quad_geometry.read_only(), &ctx.device));
-        let border_box = Box::new(BorderBox::new(
-            self.border_box_data.read_only(),
-            &ctx.device,
-        ));
 
-        vec![quads, border_box]
+        vec![quads]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
@@ -116,11 +102,10 @@ impl<
     }
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
-        let widget_events = ctx.subscribe_to_widget_events(self.id());
-
         let regen_fut = map_ref! {
-            let bb = self.bounding_box.signal(),
-            let hovered = self.is_hovered.signal() => {
+            let _bb = self.bounding_box.signal(),
+            let _color = self.color_prop_value.signal(),
+            let _hovered = self.is_hovered.signal() => {
             }
         }
         .for_each(|_| {

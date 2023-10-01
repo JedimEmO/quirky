@@ -21,8 +21,7 @@ impl<'a> FuturesMap<'a> {
         self.data
             .lock()
             .expect("FuturesMapPoll data lock error")
-            .keys()
-            .map(|k| *k)
+            .keys().copied()
             .collect()
     }
 
@@ -51,7 +50,13 @@ impl<'a> FuturesMap<'a> {
         data.remove(key);
         self.wake();
 
-        return true;
+        true
+    }
+
+    pub fn clear(&self) {
+        let mut data = self.data.lock().expect("FuturesMapPoll data lock error");
+        data.clear();
+        self.wake();
     }
 
     fn wake(&self) {
@@ -98,7 +103,7 @@ impl<'a> Future for FuturesMapPoll<'a> {
             let mut ids_to_remove = vec![];
 
             for fut in data.iter_mut() {
-                if let Poll::Ready(_) = fut.1.as_mut().poll(cx) {
+                if fut.1.as_mut().poll(cx).is_ready() {
                     ids_to_remove.push(*fut.0);
                 }
             }
