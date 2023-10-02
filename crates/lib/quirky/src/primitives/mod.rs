@@ -3,14 +3,14 @@ pub mod quad;
 pub mod text;
 pub mod vertex;
 
+use crate::quirky_app_context::QuirkyResources;
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache, TextAtlas};
 use std::collections::HashMap;
 use uuid::Uuid;
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue, RenderPipeline, TextureFormat};
 
 pub struct RenderContext<'a> {
-    pub text_atlas: &'a TextAtlas,
+    pub resources: &'a mut QuirkyResources,
     pub camera_bind_group: &'a BindGroup,
     pub screen_resolution: UVec2,
     pub pipeline_cache: &'a HashMap<Uuid, RenderPipeline>,
@@ -18,9 +18,7 @@ pub struct RenderContext<'a> {
 }
 
 pub struct PrepareContext<'a> {
-    pub font_system: &'a mut FontSystem,
-    pub text_atlas: &'a mut TextAtlas,
-    pub font_cache: &'a mut SwashCache,
+    pub resources: &'a mut QuirkyResources,
     pub device: &'a Device,
     pub queue: &'a Queue,
     pub surface_format: TextureFormat,
@@ -39,5 +37,5 @@ pub trait Primitive {
 
 pub trait DrawablePrimitive: Send + Sync {
     fn prepare(&mut self, _prepare_context: &mut PrepareContext) {}
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &RenderContext<'a>);
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &'a RenderContext<'a>);
 }

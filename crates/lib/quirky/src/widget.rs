@@ -48,7 +48,7 @@ pub trait Widget: WidgetBase + Send + Sync {
         None
     }
 
-    fn paint(
+    fn prepare(
         &self,
         _quirky_context: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,

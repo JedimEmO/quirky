@@ -8,7 +8,7 @@ use glyphon::{
     TextBounds, TextRenderer, Weight,
 };
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
-use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::quirky_app_context::{FontResource, QuirkyAppContext};
 use quirky::widget::{Widget, WidgetBase};
 use quirky::SizeConstraint;
 use quirky_macros::widget;
@@ -72,11 +72,16 @@ impl<
         TextColorSignalFn,
     >
 {
-    fn paint(
+    fn prepare(
         &self,
         quirky_context: &QuirkyAppContext,
-        paint_quirky_context: &mut PrepareContext,
+        prepare_context: &mut PrepareContext,
     ) -> Vec<Box<dyn DrawablePrimitive>> {
+        let font_resource = prepare_context
+            .resources
+            .get_resource_mut::<FontResource>(std::any::TypeId::of::<FontResource>())
+            .unwrap();
+
         let bb = self.bounding_box.get();
         let mut buffer_lock = self.text_buffer.write().unwrap();
 
@@ -84,30 +89,30 @@ impl<
 
         let buffer = if let Some(mut buf) = buffer_lock.take() {
             buf.set_size(
-                paint_quirky_context.font_system,
+                &mut font_resource.font_system,
                 bb.size.x as f32,
                 bb.size.y as f32,
             );
 
             buf.set_text(
-                paint_quirky_context.font_system,
+                &mut font_resource.font_system,
                 &self.text_prop_value.get_cloned().unwrap_or("".into()),
                 Attrs::new().family(font_settings.family.as_family()),
                 Shaping::Advanced,
             );
-            buf.shape_until_scroll(paint_quirky_context.font_system);
+            buf.shape_until_scroll(&mut font_resource.font_system);
             buf
         } else {
-            let mut buffer = Buffer::new(paint_quirky_context.font_system, font_settings.metrics);
+            let mut buffer = Buffer::new(&mut font_resource.font_system, font_settings.metrics);
 
             buffer.set_size(
-                paint_quirky_context.font_system,
+                &mut font_resource.font_system,
                 bb.size.x as f32,
                 bb.size.y as f32,
             );
 
             buffer.set_text(
-                paint_quirky_context.font_system,
+                &mut font_resource.font_system,
                 &self
                     .text_prop_value
                     .get_cloned()
@@ -117,13 +122,13 @@ impl<
                 Shaping::Advanced,
             );
 
-            buffer.shape_until_scroll(paint_quirky_context.font_system);
+            buffer.shape_until_scroll(&mut font_resource.font_system);
 
             buffer
         };
 
         let mut renderer = TextRenderer::new(
-            paint_quirky_context.text_atlas.borrow_mut(),
+            &mut font_resource.text_atlas.borrow_mut(),
             &quirky_context.device,
             Default::default(),
             None,
@@ -137,8 +142,8 @@ impl<
         let _ = renderer.prepare(
             &quirky_context.device,
             &quirky_context.queue,
-            paint_quirky_context.font_system.borrow_mut(),
-            paint_quirky_context.text_atlas.borrow_mut(),
+            &mut font_resource.font_system.borrow_mut(),
+            &mut font_resource.text_atlas.borrow_mut(),
             Resolution {
                 width: screen_resolution.x,
                 height: screen_resolution.y,
@@ -160,7 +165,7 @@ impl<
                     (text_color[2] * 256.0) as u8,
                 ),
             }],
-            paint_quirky_context.font_cache.borrow_mut(),
+            &mut font_resource.font_cache.borrow_mut(),
         );
 
         vec![Box::new(renderer)]

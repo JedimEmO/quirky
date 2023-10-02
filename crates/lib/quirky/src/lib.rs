@@ -7,7 +7,7 @@ pub mod widget;
 pub mod widgets;
 
 use crate::primitives::{DrawablePrimitive, RenderContext};
-use crate::quirky_app_context::FontContext;
+use crate::quirky_app_context::{FontContext, QuirkyResources};
 use crate::ui_camera::UiCamera2D;
 use async_std::task::{block_on, sleep};
 use futures::stream::FuturesUnordered;
@@ -253,6 +253,7 @@ pub struct QuirkyApp {
     pub context: QuirkyAppContext,
     pub viewport_size: Mutable<UVec2>,
     pub widget: Arc<dyn Widget>,
+    pub resources: Mutex<QuirkyResources>,
     ui_camera: Mutex<UiCamera2D>,
     surface_format: TextureFormat,
     camera_uniform_buffer: Buffer,
@@ -267,33 +268,21 @@ impl QuirkyApp {
         queue: Queue,
         surface_format: TextureFormat,
         widget: Arc<dyn Widget>,
-        font_system: FontSystem,
-        font_cache: SwashCache,
     ) -> Self {
         let viewport_size = Mutable::new(Default::default());
         let ui_camera = UiCamera2D::default();
         let (camera_buffer, camera_bind_group_layout, camera_bind_group) =
             Self::setup(&device, &ui_camera);
 
-        let text_atlas = TextAtlas::new(&device, &queue, surface_format);
         let (tx, rx) = async_std::channel::unbounded();
 
-        let context = QuirkyAppContext::new(
-            device,
-            queue,
-            FontContext {
-                font_system: font_system.into(),
-                font_cache: font_cache.into(),
-                text_atlas: text_atlas.into(),
-            },
-            viewport_size.read_only(),
-            tx,
-        );
+        let context = QuirkyAppContext::new(device, queue, viewport_size.read_only(), tx);
 
         Self {
             context,
             viewport_size,
             widget,
+            resources: Mutex::new(Default::default()),
             ui_camera: ui_camera.into(),
             surface_format,
             camera_uniform_buffer: camera_buffer,
@@ -370,39 +359,42 @@ impl QuirkyApp {
                         label: Some("hi there"),
                     });
 
-            let mut font_system = block_on(self.context.font_context.font_system.lock());
-            let mut font_cache = block_on(self.context.font_context.font_cache.lock());
-            let mut text_atlas = block_on(self.context.font_context.text_atlas.lock());
-
             let mut pipeline_cache = Default::default();
             let mut bind_group_cache = Default::default();
-
-            let mut paint_context = PrepareContext {
-                font_system: font_system.borrow_mut(),
-                text_atlas: text_atlas.borrow_mut(),
-                font_cache: font_cache.borrow_mut(),
-                device: &self.context.device,
-                queue: &self.context.queue,
-                surface_format: self.surface_format,
-                pipeline_cache: &mut pipeline_cache,
-                bind_group_cache: &mut bind_group_cache,
-                camera_bind_group_layout: &self.camera_bind_group_layout,
-            };
-
+            let mut resources = self.resources.lock().unwrap();
             let mut out_list = VecDeque::with_capacity(10000);
 
-            next_drawable_list(
-                &self.widget,
-                &self.context,
-                &mut paint_context,
-                &mut out_list,
-            );
+            {
+                let mut paint_context = PrepareContext {
+                    resources: resources.borrow_mut(),
+                    device: &self.context.device,
+                    queue: &self.context.queue,
+                    surface_format: self.surface_format,
+                    pipeline_cache: &mut pipeline_cache,
+                    bind_group_cache: &mut bind_group_cache,
+                    camera_bind_group_layout: &self.camera_bind_group_layout,
+                };
 
-            for drawable in out_list.iter_mut() {
-                for d in drawable.1.iter_mut() {
-                    d.prepare(&mut paint_context);
+                next_drawable_list(
+                    &self.widget,
+                    &self.context,
+                    &mut paint_context,
+                    &mut out_list,
+                );
+
+                for drawable in out_list.iter_mut() {
+                    for d in drawable.1.iter_mut() {
+                        d.prepare(&mut paint_context);
+                    }
                 }
             }
+            let render_context = RenderContext {
+                resources: resources.borrow_mut(),
+                camera_bind_group: &self.camera_bind_group,
+                screen_resolution,
+                pipeline_cache: &pipeline_cache,
+                bind_group_cache: &bind_group_cache,
+            };
 
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -422,14 +414,6 @@ impl QuirkyApp {
                     })],
                     depth_stencil_attachment: None,
                 });
-
-                let render_context = RenderContext {
-                    text_atlas: &text_atlas,
-                    camera_bind_group: &self.camera_bind_group,
-                    screen_resolution,
-                    pipeline_cache: &pipeline_cache,
-                    bind_group_cache: &bind_group_cache,
-                };
 
                 out_list.iter().for_each(|d| {
                     d.1.iter().for_each(|d2| {
@@ -549,7 +533,7 @@ fn next_drawable_list(
 
     if widget.dirty().get() {
         widget.clear_dirty();
-        out.push_back((widget_id, widget.paint(ctx, paint_ctx), widget.clone()));
+        out.push_back((widget_id, widget.prepare(ctx, paint_ctx), widget.clone()));
     } else {
         out.push_back((
             widget_id,

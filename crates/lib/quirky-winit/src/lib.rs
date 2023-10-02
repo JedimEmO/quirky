@@ -23,17 +23,13 @@ pub struct QuirkyWinitApp {
     quirky_app: Arc<QuirkyApp>,
     event_loop: Option<EventLoop<()>>,
     surface: Surface,
-    surface_format: TextureFormat,
+    pub surface_format: TextureFormat,
     surface_capabilities: SurfaceCapabilities,
     window: Window,
 }
 
 impl QuirkyWinitApp {
-    pub async fn new(
-        widget: Arc<dyn Widget>,
-        font_system: FontSystem,
-        font_cache: SwashCache,
-    ) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
+    pub async fn new(widget: Arc<dyn Widget>) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -72,14 +68,7 @@ impl QuirkyWinitApp {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
-        let quirky_app = Arc::new(QuirkyApp::new(
-            device,
-            queue,
-            surface_format,
-            widget,
-            font_system,
-            font_cache,
-        ));
+        let quirky_app = Arc::new(QuirkyApp::new(device, queue, surface_format, widget));
 
         let quirky_winit_app = Self {
             quirky_app: quirky_app.clone(),

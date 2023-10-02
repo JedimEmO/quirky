@@ -52,13 +52,8 @@ async fn main() {
         ])
         .build();
 
-    let font_system = FontSystem::new();
-    let font_cache = SwashCache::new();
-
-    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(layout, font_system, font_cache)
-        .await
-        .unwrap();
-
+    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(layout).await.unwrap();
+    quirky_widgets::init(&quirky_app, quirky_winit_app.surface_format);
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 
     tokio::spawn(quirky_app.run(draw_notifier));

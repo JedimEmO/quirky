@@ -74,7 +74,7 @@ impl<
         OnEventCallback,
     >
 {
-    fn paint(
+    fn prepare(
         &self,
         ctx: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,

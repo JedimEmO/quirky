@@ -97,7 +97,7 @@ impl<
         OnSubmitCallback,
     >
 {
-    fn paint(
+    fn prepare(
         &self,
         quirky_context: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,

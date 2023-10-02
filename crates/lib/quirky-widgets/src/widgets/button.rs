@@ -69,7 +69,7 @@ impl<
         self.content_prop_value.get_cloned().map(|v| vec![v])
     }
 
-    fn paint(
+    fn prepare(
         &self,
         quirky_context: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,

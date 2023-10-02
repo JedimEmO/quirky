@@ -20,7 +20,7 @@ pub struct DrawableImage {
 
 #[async_trait]
 impl Widget for DrawableImage {
-    fn paint(
+    fn prepare(
         &self,
         _ctx: &QuirkyAppContext,
         _paint_ctx: &mut PrepareContext,

@@ -1,7 +1,8 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
-use glyphon::{FamilyOwned, FontSystem, Metrics, SwashCache};
+use glyphon::{FamilyOwned, FontSystem, Metrics, SwashCache, TextAtlas};
 use lipsum::lipsum_words;
+use quirky::quirky_app_context::FontResource;
 use quirky::styling::Padding;
 use quirky::widget::Widget;
 use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
@@ -24,12 +25,9 @@ use tokio::time::sleep;
 async fn main() {
     let boxed_layout = simple_panel_layout();
 
-    let font_system = FontSystem::new();
-    let font_cache = SwashCache::new();
+    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout).await.unwrap();
 
-    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout, font_system, font_cache)
-        .await
-        .unwrap();
+    quirky_widgets::init(&quirky_app, quirky_winit_app.surface_format);
 
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 

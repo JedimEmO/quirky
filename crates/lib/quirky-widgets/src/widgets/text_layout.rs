@@ -7,13 +7,13 @@ use glyphon::{
     Attrs, Buffer, Color, Family, Metrics, Resolution, Shaping, TextArea, TextBounds, TextRenderer,
 };
 use quirky::primitives::{DrawablePrimitive, PrepareContext};
-use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::quirky_app_context::{FontResource, QuirkyAppContext};
 use quirky::widget::WidgetBase;
 use quirky::widget::{Event, Widget};
 use quirky::SizeConstraint;
 use quirky_macros::widget;
 use std::borrow::BorrowMut;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 #[widget]
@@ -27,7 +27,7 @@ pub struct TextLayout {
     text: Arc<str>,
     #[slot]
     on_event: Event,
-    text_buffer: futures::lock::Mutex<Option<Buffer>>,
+    text_buffer: Mutex<Option<Buffer>>,
 }
 
 #[async_trait]
@@ -39,50 +39,63 @@ impl<
         OnEventCallback: Fn(Event) -> () + Send + Sync,
     > Widget for TextLayout<ColorSignal, ColorSignalFn, TextSignal, TextSignalFn, OnEventCallback>
 {
-    fn paint(
+    fn prepare(
         &self,
         ctx: &QuirkyAppContext,
         paint_ctx: &mut PrepareContext,
     ) -> Vec<Box<dyn DrawablePrimitive>> {
+        let font_resource = paint_ctx
+            .resources
+            .get_resource_mut::<FontResource>(std::any::TypeId::of::<FontResource>())
+            .unwrap();
+
         let bb = self.bounding_box.get();
-        let mut buffer_lock = block_on(self.text_buffer.lock());
+        let mut buffer_lock = self.text_buffer.lock().unwrap();
 
         let buffer = if let Some(mut buf) = buffer_lock.take() {
-            buf.set_size(paint_ctx.font_system, bb.size.x as f32, bb.size.y as f32);
+            buf.set_size(
+                &mut font_resource.font_system,
+                bb.size.x as f32,
+                bb.size.y as f32,
+            );
 
             buf.set_text(
-                paint_ctx.font_system,
+                &mut font_resource.font_system,
                 &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
-            buf.shape_until_scroll(paint_ctx.font_system);
+            buf.shape_until_scroll(&mut font_resource.font_system);
             buf
         } else {
             let mut buffer = Buffer::new(
-                paint_ctx.font_system,
+                &mut font_resource.font_system,
                 Metrics {
                     font_size: 15.0,
                     line_height: 17.0,
                 },
             );
 
-            buffer.set_size(paint_ctx.font_system, bb.size.x as f32, bb.size.y as f32);
+            buffer.set_size(
+                &mut font_resource.font_system,
+                bb.size.x as f32,
+                bb.size.y as f32,
+            );
 
             buffer.set_text(
-                paint_ctx.font_system,
+                &mut font_resource.font_system,
                 &self.text_prop_value.get_cloned().unwrap(),
                 Attrs::new().family(Family::SansSerif),
                 Shaping::Advanced,
             );
 
-            buffer.shape_until_scroll(paint_ctx.font_system);
+            buffer.shape_until_scroll(&mut font_resource.font_system);
 
             buffer
         };
 
         let mut renderer = TextRenderer::new(
-            paint_ctx.text_atlas.borrow_mut(),
+            &mut font_resource.text_atlas.borrow_mut(),
             &ctx.device,
             Default::default(),
             None,
@@ -94,8 +107,8 @@ impl<
         let _ = renderer.prepare(
             &ctx.device,
             &ctx.queue,
-            paint_ctx.font_system.borrow_mut(),
-            paint_ctx.text_atlas.borrow_mut(),
+            &mut font_resource.font_system.borrow_mut(),
+            &mut font_resource.text_atlas.borrow_mut(),
             Resolution {
                 width: screen_resolution.x,
                 height: screen_resolution.y,
@@ -113,7 +126,7 @@ impl<
                 },
                 default_color: Color::rgb(80, 80, 50),
             }],
-            paint_ctx.font_cache.borrow_mut(),
+            &mut font_resource.font_cache.borrow_mut(),
         );
 
         vec![Box::new(renderer)]

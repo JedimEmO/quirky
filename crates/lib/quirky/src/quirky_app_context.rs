@@ -7,6 +7,7 @@ use futures::executor::block_on;
 use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
@@ -19,8 +20,46 @@ pub struct FontContext {
     pub text_atlas: Mutex<TextAtlas>,
 }
 
+pub struct FontResource {
+    pub font_system: FontSystem,
+    pub font_cache: SwashCache,
+    pub text_atlas: TextAtlas,
+}
+
+#[derive(Default)]
+pub struct QuirkyResources {
+    resources: HashMap<TypeId, Box<dyn Any + Send>>,
+}
+
+impl QuirkyResources {
+    pub fn insert<T: Send + 'static>(&mut self, resource: T) {
+        self.resources.insert(TypeId::of::<T>(), Box::new(resource));
+    }
+
+    pub fn get_resource<'a, T: 'static>(&'a self, type_id: TypeId) -> anyhow::Result<&'a T> {
+        let resource = self
+            .resources
+            .get(&type_id)
+            .expect(format!("Resource {:?} not found", type_id).as_str());
+
+        resource
+            .downcast_ref::<T>()
+            .ok_or_else(|| anyhow::anyhow!("Resource type mismatch"))
+    }
+
+    pub fn get_resource_mut<T: 'static>(&mut self, type_id: TypeId) -> anyhow::Result<&mut T> {
+        let resource = self
+            .resources
+            .get_mut(&type_id)
+            .expect(format!("Resource {:?} not found", type_id).as_str());
+
+        resource
+            .downcast_mut::<T>()
+            .ok_or_else(|| anyhow::anyhow!("Resource type mismatch"))
+    }
+}
+
 pub struct QuirkyAppContext {
-    pub font_context: FontContext,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub viewport_size: ReadOnlyMutable<UVec2>,
@@ -34,14 +73,12 @@ impl QuirkyAppContext {
     pub fn new(
         device: Device,
         queue: Queue,
-        font_context: FontContext,
         viewport_size: ReadOnlyMutable<UVec2>,
         signal_dirty: Sender<()>,
     ) -> Self {
         Self {
             device: device.into(),
             queue: queue.into(),
-            font_context,
             layouts_in_progress: Default::default(),
             widget_event_subscriptions: Default::default(),
             viewport_size,
