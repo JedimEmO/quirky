@@ -19,7 +19,7 @@ use quirky_app_context::QuirkyAppContext;
 use render_contexts::PrepareContext;
 use render_contexts::RenderContext;
 use std::borrow::BorrowMut;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::iter;
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Device, Queue,
-    ShaderStages, Surface, TextureFormat,
+    RenderPipeline, ShaderStages, Surface, TextureFormat,
 };
 use widget::Widget;
 use widgets::events::WidgetEvent;
@@ -48,6 +48,8 @@ pub struct QuirkyApp {
     pub viewport_size: Mutable<UVec2>,
     pub widget: Arc<dyn Widget>,
     pub resources: Mutex<QuirkyResources>,
+    pipeline_cache: Mutex<HashMap<Uuid, RenderPipeline>>,
+    bind_group_cache: Mutex<HashMap<Uuid, BindGroup>>,
     ui_camera: Mutex<UiCamera2D>,
     surface_format: TextureFormat,
     camera_uniform_buffer: Buffer,
@@ -77,6 +79,8 @@ impl QuirkyApp {
             viewport_size,
             widget,
             resources: Mutex::new(Default::default()),
+            pipeline_cache: Mutex::new(Default::default()),
+            bind_group_cache: Mutex::new(Default::default()),
             ui_camera: ui_camera.into(),
             surface_format,
             camera_uniform_buffer: camera_buffer,
@@ -153,8 +157,8 @@ impl QuirkyApp {
                         label: Some("hi there"),
                     });
 
-            let mut pipeline_cache = Default::default();
-            let mut bind_group_cache = Default::default();
+            let mut pipeline_cache = self.pipeline_cache.lock().unwrap();
+            let mut bind_group_cache = self.bind_group_cache.lock().unwrap();
             let mut resources = self.resources.lock().unwrap();
             let mut out_list = VecDeque::with_capacity(10000);
 
@@ -164,8 +168,8 @@ impl QuirkyApp {
                     device: &self.context.device,
                     queue: &self.context.queue,
                     surface_format: self.surface_format,
-                    pipeline_cache: &mut pipeline_cache,
-                    bind_group_cache: &mut bind_group_cache,
+                    pipeline_cache: pipeline_cache.borrow_mut(),
+                    bind_group_cache: bind_group_cache.borrow_mut(),
                     camera_bind_group_layout: &self.camera_bind_group_layout,
                 };
 
