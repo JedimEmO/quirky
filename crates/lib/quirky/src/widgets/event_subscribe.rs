@@ -13,11 +13,11 @@ pub fn run_subscribe_to_events<'a, F: Future<Output = ()> + Send>(
     quirky_context: &'a QuirkyAppContext,
     event_handler: impl (Fn(WidgetEvent) -> F) + Send + Sync + 'a,
 ) -> FuturesUnordered<BoxFuture<'a, ()>> {
-    let mut widget_events = quirky_context
-        .subscribe_to_widget_events(widget.id())
-        .fuse();
+    let widget_events = quirky_context.subscribe_to_widget_events(widget.id());
 
     let events_fut = async move {
+        let mut widget_events = widget_events.await.fuse();
+
         while let Some(evt) = widget_events.next().await {
             event_handler(evt).await;
         }

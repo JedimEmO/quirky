@@ -7,9 +7,9 @@ pub mod widget;
 pub mod widgets;
 
 use crate::primitives::{DrawablePrimitive, RenderContext};
-use crate::quirky_app_context::{FontContext, QuirkyResources};
+use crate::quirky_app_context::QuirkyResources;
 use crate::ui_camera::UiCamera2D;
-use async_std::task::{block_on, sleep};
+use async_std::task::sleep;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::{Future, FutureExt};

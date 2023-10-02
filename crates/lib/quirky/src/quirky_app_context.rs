@@ -3,7 +3,6 @@ use async_std::channel::Sender;
 use async_std::prelude::Stream;
 use async_std::sync::Mutex;
 use futures::channel::mpsc::channel;
-use futures::executor::block_on;
 use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
@@ -65,7 +64,8 @@ pub struct QuirkyAppContext {
     pub viewport_size: ReadOnlyMutable<UVec2>,
     signal_dirty: Sender<()>,
     layouts_in_progress: Arc<AtomicI64>,
-    widget_event_subscriptions: Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>,
+    widget_event_subscriptions:
+        std::sync::Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>,
     focused_widget_id: std::sync::Mutex<Option<Uuid>>,
 }
 
@@ -92,7 +92,7 @@ impl QuirkyAppContext {
     }
 
     pub fn dispatch_event(&self, mut target: Uuid, event: WidgetEvent) -> anyhow::Result<()> {
-        let mut sender_lock = block_on(self.widget_event_subscriptions.lock());
+        let mut sender_lock = self.widget_event_subscriptions.lock().unwrap();
 
         if let WidgetEvent::KeyboardEvent { .. } = &event {
             if let Some(locked_id) = self.focused_widget_id.lock().unwrap().as_ref() {
@@ -129,13 +129,16 @@ impl QuirkyAppContext {
         Ok(())
     }
 
-    pub fn subscribe_to_widget_events(
+    pub async fn subscribe_to_widget_events(
         &self,
         event_receiver: Uuid,
     ) -> impl Stream<Item = WidgetEvent> {
         let (tx, rx) = channel(1000);
 
-        block_on(self.widget_event_subscriptions.lock()).insert(event_receiver, tx);
+        self.widget_event_subscriptions
+            .lock()
+            .unwrap()
+            .insert(event_receiver, tx);
 
         rx
     }

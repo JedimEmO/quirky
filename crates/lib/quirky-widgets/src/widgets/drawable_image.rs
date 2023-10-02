@@ -56,7 +56,7 @@ impl Widget for DrawableImage {
         let widget_events = ctx.subscribe_to_widget_events(self.id());
         let mouse_pos = Mutable::new(UVec2::default());
 
-        let event_redraw = widget_events.for_each(clone!(self, move |e| {
+        let event_redraw = widget_events.await.for_each(clone!(self, move |e| {
             clone!(
                 mouse_pos,
                 clone!(self, async move {

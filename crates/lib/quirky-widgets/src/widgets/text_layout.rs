@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::executor::block_on;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Signal, SignalExt};
 use glam::{uvec2, UVec2};
