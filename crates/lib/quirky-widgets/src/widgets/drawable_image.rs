@@ -1,13 +1,15 @@
+use crate::primitives::image::ImagePrimitive;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
-use quirky::primitives::image::ImagePrimitive;
-use quirky::primitives::{DrawablePrimitive, PrepareContext};
+use quirky::clone;
+use quirky::drawable_primitive::DrawablePrimitive;
 use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::render_contexts::PrepareContext;
 use quirky::widget::{Widget, WidgetBase};
-use quirky::{clone, MouseButton, MouseEvent, WidgetEvent};
+use quirky::widgets::events::{MouseButton, MouseEvent, WidgetEvent};
 use quirky_macros::widget;
 use std::sync::Arc;
 use uuid::Uuid;

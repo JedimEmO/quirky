@@ -1,11 +1,10 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
-use quirky::{
-    clone, KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, QuirkyApp,
-    WidgetEvent,
+use quirky::widgets::events::{
+    KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, WidgetEvent,
 };
+use quirky::{clone, QuirkyApp};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;

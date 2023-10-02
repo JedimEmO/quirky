@@ -1,8 +1,3 @@
-pub mod image;
-pub mod quad;
-pub mod text;
-pub mod vertex;
-
 use crate::quirky_app_context::QuirkyResources;
 use glam::UVec2;
 use std::collections::HashMap;
@@ -25,17 +20,4 @@ pub struct PrepareContext<'a> {
     pub pipeline_cache: &'a mut HashMap<Uuid, RenderPipeline>,
     pub bind_group_cache: &'a mut HashMap<Uuid, BindGroup>,
     pub camera_bind_group_layout: &'a BindGroupLayout,
-}
-
-pub trait Primitive {
-    fn configure_pipeline(
-        device: &Device,
-        bind_group_layouts: &[&BindGroupLayout],
-        surface_format: TextureFormat,
-    );
-}
-
-pub trait DrawablePrimitive: Send + Sync {
-    fn prepare(&mut self, _prepare_context: &mut PrepareContext) {}
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, render_context: &'a RenderContext<'a>);
 }

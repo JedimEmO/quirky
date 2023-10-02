@@ -1,7 +1,7 @@
+use crate::primitives::vertex::{Vertex, QUAD_INDEXES, QUAD_VERTICES};
 use futures_signals::signal::ReadOnlyMutable;
-use quirky::primitives::vertex::QUAD_INDEXES;
-use quirky::primitives::vertex::{Vertex, QUAD_VERTICES};
-use quirky::primitives::{DrawablePrimitive, PrepareContext, RenderContext};
+use quirky::drawable_primitive::DrawablePrimitive;
+use quirky::render_contexts::{PrepareContext, RenderContext};
 use std::mem;
 use uuid::Uuid;
 use wgpu::util::DeviceExt;

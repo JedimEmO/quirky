@@ -1,33 +1,27 @@
-pub mod primitives;
+pub mod drawable_primitive;
 pub mod quirky_app_context;
-pub mod styling;
+pub mod render_contexts;
 mod ui_camera;
-pub mod view_tree;
 pub mod widget;
 pub mod widgets;
 
-use crate::primitives::{DrawablePrimitive, RenderContext};
 use crate::quirky_app_context::QuirkyResources;
 use crate::ui_camera::UiCamera2D;
 use async_std::task::sleep;
+use drawable_primitive::DrawablePrimitive;
 use futures::stream::FuturesUnordered;
+use futures::FutureExt;
 use futures::StreamExt;
-use futures::{Future, FutureExt};
-use futures_signals::map_ref;
-use futures_signals::signal::{Mutable, Signal, SignalExt};
-use futures_signals::signal_vec::MutableVecLockMut;
-use futures_signals::signal_vec::{MutableVec, SignalVec};
-use futures_signals::signal_vec::{SignalVecExt, VecDiff};
+use futures_signals::signal::{Mutable, SignalExt};
+use futures_signals::signal_vec::MutableVec;
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache, TextAtlas};
-use primitives::PrepareContext;
 use quirky_app_context::QuirkyAppContext;
-use quirky_utils::futures_map_poll::FuturesMapPoll;
+use render_contexts::PrepareContext;
+use render_contexts::RenderContext;
 use std::borrow::BorrowMut;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::iter;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
@@ -38,6 +32,8 @@ use wgpu::{
     ShaderStages, Surface, TextureFormat,
 };
 use widget::Widget;
+use widgets::events::WidgetEvent;
+use widgets::run_widget;
 
 #[macro_export]
 macro_rules! clone {
@@ -45,208 +41,6 @@ macro_rules! clone {
         let $v = $v.clone();
         ($b)
     }};
-}
-
-pub struct LayoutToken {
-    layout_counter: Arc<AtomicI64>,
-}
-
-impl LayoutToken {
-    pub fn new(counter: Arc<AtomicI64>) -> Self {
-        counter.fetch_add(1, Ordering::Relaxed);
-        Self {
-            layout_counter: counter,
-        }
-    }
-}
-
-impl Drop for LayoutToken {
-    fn drop(&mut self) {
-        self.layout_counter.fetch_add(-1, Ordering::Relaxed);
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-    Num(usize),
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
-#[repr(u32)]
-pub enum KeyCode {
-    Key1,
-    Key2,
-    Key3,
-    Key4,
-    Key5,
-    Key6,
-    Key7,
-    Key8,
-    Key9,
-    Key0,
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
-    Escape,
-    F1,
-    F2,
-    F3,
-    F4,
-    F5,
-    F6,
-    F7,
-    F8,
-    F9,
-    F10,
-    F11,
-    F12,
-    F13,
-    F14,
-    F15,
-    F16,
-    F17,
-    F18,
-    F19,
-    F20,
-    F21,
-    F22,
-    F23,
-    F24,
-    Snapshot,
-    Scroll,
-    Pause,
-    Insert,
-    Home,
-    Delete,
-    End,
-    PageDown,
-    PageUp,
-    Left,
-    Up,
-    Right,
-    Down,
-    Backspace,
-    Return,
-    Space,
-    Compose,
-    Caret,
-    NumLock,
-    Numpad0,
-    Numpad1,
-    Numpad2,
-    Numpad3,
-    Numpad4,
-    Numpad5,
-    Numpad6,
-    Numpad7,
-    Numpad8,
-    Numpad9,
-    NumpadAdd,
-    NumpadDivide,
-    NumpadDecimal,
-    NumpadComma,
-    NumpadEnter,
-    NumpadEquals,
-    NumpadMultiply,
-    NumpadSubtract,
-    Apostrophe,
-    Apps,
-    Asterisk,
-    Backslash,
-    Calculator,
-    Capital,
-    Colon,
-    Comma,
-    Period,
-    Convert,
-    Equals,
-    Grave,
-    Semicolon,
-    At,
-    Enter,
-    Unknown,
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct KeyboardModifier {
-    pub alt: bool,
-    pub shift: bool,
-    pub ctrl: bool,
-}
-
-#[derive(Clone)]
-pub enum KeyboardEvent {
-    KeyPressed {
-        key_code: KeyCode,
-        modifier: KeyboardModifier,
-    },
-}
-
-#[derive(Clone)]
-pub enum MouseEvent {
-    Enter {
-        pos: UVec2,
-    },
-    Leave {},
-    Move {
-        pos: UVec2,
-    },
-    ButtonDown {
-        button: MouseButton,
-    },
-    ButtonUp {
-        button: MouseButton,
-    },
-    Drag {
-        from: UVec2,
-        to: UVec2,
-        button: MouseButton,
-    },
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum FocusState {
-    Focused,
-    Unfocused,
-}
-
-#[derive(Clone)]
-pub enum WidgetEvent {
-    KeyboardEvent { event: KeyboardEvent },
-    MouseEvent { event: MouseEvent },
-    FocusChange(FocusState),
-}
-
-#[derive(Clone)]
-pub struct EventDispatch {
-    pub receiver_id: Uuid,
-    pub event: WidgetEvent,
 }
 
 pub struct QuirkyApp {
@@ -294,7 +88,7 @@ impl QuirkyApp {
 
     pub async fn run(self: Arc<Self>, on_new_drawables: impl Fn() + Send) {
         let widgets = MutableVec::new_with_values(vec![self.widget.clone()]);
-        let fut = run_widgets(&self.context, widgets.signal_vec_cloned());
+        let fut = run_widget::run_widgets(&self.context, widgets.signal_vec_cloned());
 
         let mut run_futs = FuturesUnordered::new();
 
@@ -471,58 +265,6 @@ impl QuirkyApp {
     }
 }
 
-pub fn run_widgets<'a>(
-    ctx: &'a QuirkyAppContext,
-    widgets_signal: impl SignalVec<Item = Arc<dyn Widget>> + Send + 'a,
-) -> impl Future<Output = ()> + 'a {
-    let widgets = MutableVec::new();
-    let (widgets_futures_map, data) = FuturesMapPoll::new();
-
-    let widgets_fut = widgets_signal.for_each(clone!(
-        data,
-        clone!(widgets, move |change: VecDiff<Arc<dyn Widget>>| {
-            let mut widgets_lock = widgets.lock_mut();
-            let mut widgets_futures_lock = data.lock().unwrap();
-
-            MutableVecLockMut::<'_, _>::apply_vec_diff(&mut widgets_lock, change);
-
-            // Add futures for newly inserted widgets
-            for widget in widgets_lock.iter() {
-                let id = widget.id();
-
-                if !widgets_futures_lock.contains_key(&id) {
-                    widgets_futures_lock.insert(id, widget.clone().run(ctx).boxed().into());
-                }
-            }
-
-            let current_widget_ids: HashSet<Uuid> = widgets_lock.iter().map(|w| w.id()).collect();
-
-            // Remove futures no longer in the widget list
-            let ids_to_remove: Vec<Uuid> = widgets_futures_lock
-                .iter()
-                .filter(|w| !current_widget_ids.contains(w.0))
-                .map(|w| *w.0)
-                .collect();
-
-            for id_to_remove in ids_to_remove {
-                widgets_futures_lock.remove(&id_to_remove);
-            }
-
-            async move {}
-        })
-    ));
-
-    let mut futs = FuturesUnordered::new();
-    futs.push(widgets_fut.boxed());
-    futs.push(widgets_futures_map.boxed());
-
-    async move {
-        loop {
-            let _ = futs.select_next_some().await;
-        }
-    }
-}
-
 fn next_drawable_list(
     widget: &Arc<dyn Widget>,
     ctx: &QuirkyAppContext,
@@ -548,16 +290,6 @@ fn next_drawable_list(
     });
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SizeConstraint {
-    MinSize(UVec2),
-    MaxSize(UVec2),
-    #[default]
-    Unconstrained,
-    MaxHeight(u32),
-    MaxWidth(u32),
-}
-
 #[derive(PartialEq, Clone, Copy, Debug, Default)]
 pub struct LayoutBox {
     pub pos: UVec2,
@@ -569,23 +301,6 @@ impl LayoutBox {
         let br = self.pos + self.size;
 
         pos.x >= self.pos.x && pos.y >= self.pos.y && pos.x < br.x && pos.y < br.y
-    }
-}
-
-pub fn layout<TExtras: Send>(
-    container_box: impl Signal<Item = LayoutBox> + Send,
-    constraints: impl SignalVec<Item = Box<dyn Signal<Item = SizeConstraint> + Unpin + Send>> + Send,
-    extras_signal: impl Signal<Item = TExtras> + Send,
-    layout_strategy: impl Fn(&LayoutBox, &Vec<SizeConstraint>, &TExtras) -> Vec<LayoutBox> + Send,
-) -> impl Signal<Item = Vec<LayoutBox>> + Send {
-    let constraints = constraints.map_signal(|x| x).to_signal_cloned();
-
-    map_ref! {
-        let container_box = container_box,
-        let child_constraints = constraints,
-        let extras = extras_signal => {
-            layout_strategy(container_box, child_constraints, extras)
-        }
     }
 }
 

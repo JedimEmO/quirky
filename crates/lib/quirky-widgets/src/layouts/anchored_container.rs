@@ -1,3 +1,4 @@
+use crate::styling::Padding;
 use async_trait::async_trait;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -5,10 +6,10 @@ use futures_signals::map_ref;
 use futures_signals::signal::{always, Signal, SignalExt};
 use glam::UVec2;
 use quirky::quirky_app_context::QuirkyAppContext;
-use quirky::styling::Padding;
-use quirky::widget::Widget;
 use quirky::widget::WidgetBase;
-use quirky::{layout, LayoutBox, SizeConstraint};
+use quirky::widget::{SizeConstraint, Widget};
+use quirky::widgets::layout_helper::layout;
+use quirky::LayoutBox;
 use quirky_macros::widget;
 use quirky_utils::futures_map_poll::FuturesMapPoll;
 use std::cmp::min;

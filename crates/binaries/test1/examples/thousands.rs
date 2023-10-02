@@ -1,4 +1,3 @@
-use glyphon::{FontSystem, SwashCache};
 use quirky::widget::Widget;
 use quirky_widgets::layouts::box_layout::{BoxLayoutBuilder, ChildDirection};
 use quirky_widgets::widgets::slab::SlabBuilder;

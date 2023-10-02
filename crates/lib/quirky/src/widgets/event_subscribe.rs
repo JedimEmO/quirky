@@ -1,6 +1,6 @@
 use crate::quirky_app_context::QuirkyAppContext;
 use crate::widget::Widget;
-use crate::WidgetEvent;
+use crate::widgets::events::WidgetEvent;
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};

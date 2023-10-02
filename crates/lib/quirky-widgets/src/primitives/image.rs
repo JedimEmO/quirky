@@ -1,6 +1,8 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext, RenderContext};
-use crate::LayoutBox;
+use crate::primitives::vertex::{Vertex, QUAD_INDEXES, QUAD_VERTICES};
 use image::RgbaImage;
+use quirky::drawable_primitive::DrawablePrimitive;
+use quirky::render_contexts::{PrepareContext, RenderContext};
+use quirky::LayoutBox;
 use std::mem;
 use uuid::Uuid;
 use wgpu::util::DeviceExt;
@@ -10,34 +12,6 @@ use wgpu::{
 use wgpu_macros::VertexLayout;
 
 static PRIMITIVE_UUID: Uuid = Uuid::from_u128(0x96f1543e_52e7_4f6b_8dc9_c5561df1f404);
-
-const INDEXES: [u16; 6] = [0, 1, 2, 0, 2, 3];
-
-#[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
-#[repr(C)]
-struct Vertex {
-    pos: [f32; 2],
-    tex_coords: [f32; 2],
-}
-
-const VERTICES: [Vertex; 4] = [
-    Vertex {
-        pos: [0.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    },
-    Vertex {
-        pos: [1.0, 0.0],
-        tex_coords: [1.0, 0.0],
-    },
-    Vertex {
-        pos: [1.0, 1.0],
-        tex_coords: [1.0, 1.0],
-    },
-    Vertex {
-        pos: [0.0, 1.0],
-        tex_coords: [0.0, 1.0],
-    },
-];
 
 #[repr(C)]
 #[derive(VertexLayout, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -217,7 +191,7 @@ impl ImagePrimitive {
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("quad index buffer"),
-                    contents: bytemuck::cast_slice(&VERTICES),
+                    contents: bytemuck::cast_slice(&QUAD_VERTICES),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
 
@@ -226,7 +200,7 @@ impl ImagePrimitive {
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: None,
-                    contents: bytemuck::cast_slice(&INDEXES),
+                    contents: bytemuck::cast_slice(&QUAD_INDEXES),
                     usage: wgpu::BufferUsages::INDEX,
                 });
 

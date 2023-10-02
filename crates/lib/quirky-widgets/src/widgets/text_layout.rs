@@ -1,3 +1,5 @@
+use crate::primitives::text::TextRendererPrimitive;
+use crate::resources::font_resource::FontResource;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Signal, SignalExt};
@@ -5,11 +7,12 @@ use glam::{uvec2, UVec2};
 use glyphon::{
     Attrs, Buffer, Color, Family, Metrics, Resolution, Shaping, TextArea, TextBounds, TextRenderer,
 };
-use quirky::primitives::{DrawablePrimitive, PrepareContext};
-use quirky::quirky_app_context::{FontResource, QuirkyAppContext};
+use quirky::drawable_primitive::DrawablePrimitive;
+use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::render_contexts::PrepareContext;
+use quirky::widget::SizeConstraint;
 use quirky::widget::WidgetBase;
 use quirky::widget::{Event, Widget};
-use quirky::SizeConstraint;
 use quirky_macros::widget;
 use std::borrow::BorrowMut;
 use std::sync::{Arc, Mutex};
@@ -128,7 +131,7 @@ impl<
             &mut font_resource.font_cache.borrow_mut(),
         );
 
-        vec![Box::new(renderer)]
+        vec![Box::new(TextRendererPrimitive(renderer))]
     }
 
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {

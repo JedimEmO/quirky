@@ -1,10 +1,12 @@
+use crate::resources::font_resource::FontResource;
 use glyphon::{FontSystem, SwashCache, TextAtlas};
-use quirky::quirky_app_context::FontResource;
 use quirky::QuirkyApp;
 use wgpu::TextureFormat;
 
 pub mod layouts;
 pub mod primitives;
+pub mod resources;
+pub mod styling;
 pub mod widgets;
 
 pub fn init(quirky_app: &QuirkyApp, surface_format: TextureFormat) {

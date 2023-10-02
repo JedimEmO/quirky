@@ -1,6 +1,8 @@
-use crate::primitives::{DrawablePrimitive, PrepareContext};
+use crate::drawable_primitive::DrawablePrimitive;
 use crate::quirky_app_context::QuirkyAppContext;
-use crate::{LayoutBox, SizeConstraint, WidgetEvent};
+use crate::render_contexts::PrepareContext;
+use crate::widgets::events::WidgetEvent;
+use crate::LayoutBox;
 use futures::{Stream, StreamExt};
 use futures_signals::signal::{always, ReadOnlyMutable, Signal};
 use glam::UVec2;
@@ -83,4 +85,14 @@ pub async fn default_run(widget: Arc<dyn Widget>, ctx: &QuirkyAppContext) {
     loop {
         let _n = futs.select_next_some().await;
     }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SizeConstraint {
+    MinSize(UVec2),
+    MaxSize(UVec2),
+    #[default]
+    Unconstrained,
+    MaxHeight(u32),
+    MaxWidth(u32),
 }

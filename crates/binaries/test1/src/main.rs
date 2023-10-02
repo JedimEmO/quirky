@@ -1,13 +1,13 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
-use glyphon::{FamilyOwned, FontSystem, Metrics, SwashCache, TextAtlas};
+use glyphon::{FamilyOwned, Metrics};
 use lipsum::lipsum_words;
-use quirky::quirky_app_context::FontResource;
-use quirky::styling::Padding;
-use quirky::widget::Widget;
-use quirky::{clone, MouseEvent, SizeConstraint, WidgetEvent};
+use quirky::clone;
+use quirky::widget::{SizeConstraint, Widget};
+use quirky::widgets::events::{MouseEvent, WidgetEvent};
 use quirky_widgets::layouts::anchored_container::AnchoredContainerBuilder;
 use quirky_widgets::layouts::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::styling::Padding;
 use quirky_widgets::widgets::button::ButtonBuilder;
 use quirky_widgets::widgets::drawable_image::DrawableImageBuilder;
 use quirky_widgets::widgets::label::{FontSettings, LabelBuilder};

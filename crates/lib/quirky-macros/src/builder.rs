@@ -892,7 +892,7 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
             id: uuid::Uuid,
             bounding_box: futures_signals::signal::Mutable<quirky::LayoutBox>,
             dirty: futures_signals::signal::Mutable<bool>,
-            cached_primitives: futures_signals::signal::Mutable<Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>>>,
+            cached_primitives: futures_signals::signal::Mutable<Option<Vec<Box<dyn quirky::drawable_primitive::DrawablePrimitive>>>>,
             #(#real_struct_members),*
         }
 
@@ -925,11 +925,11 @@ impl Into<proc_macro::TokenStream> for BuilderStruct {
                 self.dirty.set(false);
             }
 
-            fn get_cached_primitives(&self) -> Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>> {
+            fn get_cached_primitives(&self) -> Option<Vec<Box<dyn quirky::drawable_primitive::DrawablePrimitive>>> {
                 self.cached_primitives.lock_mut().take()
             }
 
-            fn set_cached_primitives(&self, primitives: Option<Vec<Box<dyn quirky::primitives::DrawablePrimitive>>>) -> () {
+            fn set_cached_primitives(&self, primitives: Option<Vec<Box<dyn quirky::drawable_primitive::DrawablePrimitive>>>) -> () {
                 let _ = self.cached_primitives.lock_mut().insert(primitives.or(Some(vec![])).unwrap());
             }
 

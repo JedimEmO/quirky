@@ -1,29 +1,14 @@
-use crate::{FocusState, LayoutToken, MouseEvent, WidgetEvent};
+use crate::widgets::events::{FocusState, MouseEvent, WidgetEvent};
 use async_std::channel::Sender;
 use async_std::prelude::Stream;
-use async_std::sync::Mutex;
 use futures::channel::mpsc::channel;
 use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
-use glyphon::{FontSystem, SwashCache, TextAtlas};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 use wgpu::{Device, Queue};
-
-pub struct FontContext {
-    pub font_system: Mutex<FontSystem>,
-    pub font_cache: Mutex<SwashCache>,
-    pub text_atlas: Mutex<TextAtlas>,
-}
-
-pub struct FontResource {
-    pub font_system: FontSystem,
-    pub font_cache: SwashCache,
-    pub text_atlas: TextAtlas,
-}
 
 #[derive(Default)]
 pub struct QuirkyResources {
@@ -35,7 +20,7 @@ impl QuirkyResources {
         self.resources.insert(TypeId::of::<T>(), Box::new(resource));
     }
 
-    pub fn get_resource<'a, T: 'static>(&'a self, type_id: TypeId) -> anyhow::Result<&'a T> {
+    pub fn get_resource<T: 'static>(&self, type_id: TypeId) -> anyhow::Result<&T> {
         let resource = self
             .resources
             .get(&type_id)
@@ -63,7 +48,6 @@ pub struct QuirkyAppContext {
     pub queue: Arc<Queue>,
     pub viewport_size: ReadOnlyMutable<UVec2>,
     signal_dirty: Sender<()>,
-    layouts_in_progress: Arc<AtomicI64>,
     widget_event_subscriptions:
         std::sync::Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>,
     focused_widget_id: std::sync::Mutex<Option<Uuid>>,
@@ -79,7 +63,6 @@ impl QuirkyAppContext {
         Self {
             device: device.into(),
             queue: queue.into(),
-            layouts_in_progress: Default::default(),
             widget_event_subscriptions: Default::default(),
             viewport_size,
             signal_dirty,
@@ -144,14 +127,6 @@ impl QuirkyAppContext {
     }
 
     pub fn unsubscribe_from_widget_events(&self, _widget_id: Uuid) {}
-
-    pub fn start_layout(&self) -> LayoutToken {
-        LayoutToken::new(self.layouts_in_progress.clone())
-    }
-
-    pub fn active_layouts(&self) -> i64 {
-        self.layouts_in_progress.load(Ordering::Relaxed)
-    }
 
     pub fn request_focus(&self, widget_id: Uuid) {
         let _ = self.focused_widget_id.lock().unwrap().insert(widget_id);

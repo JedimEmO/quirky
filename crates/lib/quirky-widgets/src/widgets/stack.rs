@@ -3,8 +3,9 @@ use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{Signal, SignalExt};
 use futures_signals::signal_vec::SignalVecExt;
 use quirky::quirky_app_context::QuirkyAppContext;
+use quirky::widget::SizeConstraint;
 use quirky::widget::{Widget, WidgetBase};
-use quirky::{run_widgets, SizeConstraint};
+use quirky::widgets::run_widget::run_widgets;
 use quirky_macros::widget;
 use std::sync::Arc;
 
