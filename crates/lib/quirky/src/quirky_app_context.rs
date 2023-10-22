@@ -20,7 +20,8 @@ impl QuirkyResources {
         self.resources.insert(TypeId::of::<T>(), Box::new(resource));
     }
 
-    pub fn get_resource<T: 'static>(&self, type_id: TypeId) -> anyhow::Result<&T> {
+    pub fn get_resource<T: 'static>(&self) -> anyhow::Result<&T> {
+        let type_id = TypeId::of::<T>();
         let resource = self
             .resources
             .get(&type_id)

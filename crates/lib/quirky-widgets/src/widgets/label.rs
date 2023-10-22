@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
 use futures_signals::signal::{Signal, SignalExt};
-use glam::UVec2;
+use glyphon::cosmic_text::Align;
 use glyphon::{
-    Attrs, Buffer, Color, FamilyOwned, Metrics, Resolution, Shaping, Stretch, Style, TextArea,
-    TextBounds, TextRenderer, Weight,
+    Attrs, Buffer, BufferLine, Color, FamilyOwned, Metrics, Resolution, Shaping, Stretch, Style,
+    TextArea, TextBounds, TextRenderer, Weight,
 };
 use quirky::drawable_primitive::DrawablePrimitive;
 use quirky::quirky_app_context::QuirkyAppContext;
@@ -51,8 +51,11 @@ pub struct Label {
     #[default(Default::default())]
     font_settings: FontSettings,
     #[signal_prop]
-    #[default([0.2, 0.2, 0.1])]
-    text_color: [f32; 3],
+    #[default(Align::Justified)]
+    text_align: Align,
+    #[signal_prop]
+    #[default([0.2, 0.2, 0.1, 1.0])]
+    text_color: [f32; 4],
     #[default(Arc::new(RwLock::new(None)))]
     text_buffer: Arc<RwLock<Option<Buffer>>>,
 }
@@ -63,7 +66,9 @@ impl<
         TextSignalFn: Fn() -> TextSignal + Send + Sync + 'static,
         FontSettingsSignal: futures_signals::signal::Signal<Item = FontSettings> + Send + Sync + Unpin + 'static,
         FontSettingsSignalFn: Fn() -> FontSettingsSignal + Send + Sync + 'static,
-        TextColorSignal: futures_signals::signal::Signal<Item = [f32; 3]> + Send + Sync + Unpin + 'static,
+        TextAlignSignal: futures_signals::signal::Signal<Item = Align> + Send + Sync + Unpin + 'static,
+        TextAlignSignalFn: Fn() -> TextAlignSignal + Send + Sync + 'static,
+        TextColorSignal: futures_signals::signal::Signal<Item = [f32; 4]> + Send + Sync + Unpin + 'static,
         TextColorSignalFn: Fn() -> TextColorSignal + Send + Sync + 'static,
     > Widget
     for Label<
@@ -71,6 +76,8 @@ impl<
         TextSignalFn,
         FontSettingsSignal,
         FontSettingsSignalFn,
+        TextAlignSignal,
+        TextAlignSignalFn,
         TextColorSignal,
         TextColorSignalFn,
     >
@@ -103,7 +110,12 @@ impl<
                 Attrs::new().family(font_settings.family.as_family()),
                 Shaping::Advanced,
             );
+            buf.lines.iter_mut().for_each(|line: &mut BufferLine| {
+                line.set_align(self.text_align_prop_value.get());
+            });
+
             buf.shape_until_scroll(&mut font_resource.font_system);
+
             buf
         } else {
             let mut buffer = Buffer::new(&mut font_resource.font_system, font_settings.metrics);
@@ -124,6 +136,10 @@ impl<
                 Attrs::new().family(font_settings.family.as_family()),
                 Shaping::Advanced,
             );
+
+            buffer.lines.iter_mut().for_each(|line: &mut BufferLine| {
+                line.set_align(self.text_align_prop_value.get());
+            });
 
             buffer.shape_until_scroll(&mut font_resource.font_system);
 
@@ -162,10 +178,11 @@ impl<
                     right: (bb.pos.x as i32 + bb.size.x as i32).min(screen_resolution.x as i32),
                     bottom: (bb.pos.y as i32 + bb.size.y as i32).min(screen_resolution.y as i32),
                 },
-                default_color: Color::rgb(
+                default_color: Color::rgba(
                     (text_color[0] * 256.0) as u8,
                     (text_color[1] * 256.0) as u8,
                     (text_color[2] * 256.0) as u8,
+                    (text_color[3] * 256.0) as u8,
                 ),
             }],
             &mut font_resource.font_cache.borrow_mut(),
@@ -177,16 +194,12 @@ impl<
     fn size_constraint(&self) -> Box<dyn Signal<Item = SizeConstraint> + Unpin + Send> {
         let font_settings_prop = self.font_settings_prop_value.clone();
 
-        Box::new((self.text)().map(move |txt| {
+        Box::new((self.text)().map(move |_txt| {
             let font_settings = font_settings_prop.lock_ref();
 
             let metrics = font_settings.as_ref().unwrap().metrics;
-            let len = txt.len();
 
-            SizeConstraint::MaxSize(UVec2::new(
-                (metrics.font_size * len as f32 / 1.2) as u32,
-                metrics.line_height as u32,
-            ))
+            SizeConstraint::MaxHeight(metrics.line_height as u32)
         }))
     }
 

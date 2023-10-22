@@ -1,0 +1,12 @@
+[input_theme]
+background_color = [0.01, 0.01, 0.015, 1.0]
+background_color_hovered = [0.01, 0.015, 0.02, 1.0]
+border_color = [0.05, 0.05, 0.05, 1.0]
+border_color_focused = [0.05, 0.1, 0.1, 1.0]
+border_width = 1.0
+label_color = [0.4, 0.4, 0.4, 1.0]
+label_color_invalid = [0.9, 0.1, 0.1, 1.0]
+text_color = [0.8, 0.8, 0.8, 1.0]
+text_size = 12.0
+text_padding = 4.0
+text_font = "sans-serif"

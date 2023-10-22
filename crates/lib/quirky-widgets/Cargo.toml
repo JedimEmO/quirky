@@ -20,3 +20,4 @@ quirky-utils = { path = "../quirky-utils" }
 uuid.workspace = true
 wgpu.workspace = true
 wgpu_macros.workspace = true
+serde = { version = "1.0.188", features = ["derive"] }

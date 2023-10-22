@@ -1,11 +1,12 @@
 use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
+use quirky::quirky_app_context::{QuirkyAppContext, QuirkyResources};
 use quirky::widget::Widget;
 use quirky::widgets::events::{
     KeyCode, KeyboardEvent, KeyboardModifier, MouseButton, MouseEvent, WidgetEvent,
 };
 use quirky::{clone, QuirkyApp};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -28,7 +29,10 @@ pub struct QuirkyWinitApp {
 }
 
 impl QuirkyWinitApp {
-    pub async fn new(widget: Arc<dyn Widget>) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
+    pub async fn new(
+        init_fn: impl FnOnce(&mut QuirkyResources, &QuirkyAppContext, TextureFormat) -> (),
+        ui_factory: impl FnOnce(Arc<Mutex<QuirkyResources>>) -> Arc<dyn Widget>,
+    ) -> anyhow::Result<(QuirkyWinitApp, Arc<QuirkyApp>)> {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -67,7 +71,13 @@ impl QuirkyWinitApp {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
-        let quirky_app = Arc::new(QuirkyApp::new(device, queue, surface_format, widget));
+        let quirky_app = Arc::new(QuirkyApp::new(
+            device,
+            queue,
+            surface_format,
+            init_fn,
+            ui_factory,
+        ));
 
         let quirky_winit_app = Self {
             quirky_app: quirky_app.clone(),

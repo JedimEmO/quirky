@@ -1,21 +1,15 @@
-use crate::layouts::anchored_container::{AnchorPoint, AnchoredContainerBuilder};
 use crate::primitives::border_box::{BorderBox, BorderBoxData};
 use crate::primitives::quad::{Quad, Quads};
-use crate::styling::Padding;
-use crate::widgets::label::{FontSettings, LabelBuilder};
-use crate::widgets::stack::StackBuilder;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::map_ref;
-use futures_signals::signal::{Mutable, Signal, SignalExt};
-use futures_signals::signal_vec::MutableVec;
+use futures_signals::signal::{Mutable, SignalExt};
 use glam::UVec2;
-use glyphon::{FamilyOwned, Metrics, Style, Weight};
 use quirky::clone;
 use quirky::drawable_primitive::DrawablePrimitive;
 use quirky::quirky_app_context::QuirkyAppContext;
 use quirky::render_contexts::PrepareContext;
-use quirky::widget::{SizeConstraint, Widget, WidgetBase};
+use quirky::widget::{Widget, WidgetBase};
 use quirky::widgets::event_subscribe::run_subscribe_to_events;
 use quirky::widgets::events::{FocusState, KeyCode, KeyboardEvent, MouseEvent, WidgetEvent};
 use quirky_macros::widget;
@@ -36,12 +30,18 @@ pub struct TextInput {
     focus_state: Mutable<FocusState>,
     #[default(Mutable::new(Arc::new([])))]
     quad_geometry: Mutable<Arc<[Quad]>>,
+    #[default(Default::default())]
+    #[signal_prop]
+    settings: TextInputSettings,
     border_box_data: Mutable<BorderBoxData>,
     hovered: Mutable<bool>,
 }
+
 impl<
         TextValueSignal: futures_signals::signal::Signal<Item = String> + Send + Sync + Unpin + 'static,
         TextValueSignalFn: Fn() -> TextValueSignal + Send + Sync + 'static,
+        SettingsSignal: futures_signals::signal::Signal<Item = TextInputSettings> + Send + Sync + Unpin + 'static,
+        SettingsSignalFn: Fn() -> SettingsSignal + Send + Sync + 'static,
         OnTextChangeCallback: Fn(String) -> () + Send + Sync + 'static,
         OnFocusChangeCallback: Fn(FocusState) -> () + Send + Sync + 'static,
         OnSubmitCallback: Fn(()) -> () + Send + Sync + 'static,
@@ -49,6 +49,8 @@ impl<
     TextInput<
         TextValueSignal,
         TextValueSignalFn,
+        SettingsSignal,
+        SettingsSignalFn,
         OnTextChangeCallback,
         OnFocusChangeCallback,
         OnSubmitCallback,
@@ -56,17 +58,18 @@ impl<
 {
     fn regenerate_primitives(&self) {
         let bb = self.bounding_box.get();
+        let settings = self.settings_prop_value.get().unwrap();
 
         let color = if self.hovered.get() {
-            [0.002, 0.002, 0.002, 1.0]
+            settings.background_color_hovered
         } else {
-            [0.0005, 0.0005, 0.0005, 1.0]
+            settings.background_color
         };
 
         let border_color = if self.focus_state.get() == FocusState::Focused {
-            [0.05, 0.05, 0.3, 1.0]
+            settings.border_color_focused
         } else {
-            [0.02, 0.02, 0.02, 1.0]
+            settings.border_color
         };
 
         self.quad_geometry
@@ -87,6 +90,8 @@ impl<
 impl<
         TextValueSignal: futures_signals::signal::Signal<Item = String> + Send + Sync + Unpin + 'static,
         TextValueSignalFn: Fn() -> TextValueSignal + Send + Sync + 'static,
+        SettingsSignal: futures_signals::signal::Signal<Item = TextInputSettings> + Send + Sync + Unpin + 'static,
+        SettingsSignalFn: Fn() -> SettingsSignal + Send + Sync + 'static,
         OnTextChangeCallback: Fn(String) -> () + Send + Sync + 'static,
         OnFocusChangeCallback: Fn(FocusState) -> () + Send + Sync + 'static,
         OnSubmitCallback: Fn(()) -> () + Send + Sync + 'static,
@@ -94,6 +99,8 @@ impl<
     for TextInput<
         TextValueSignal,
         TextValueSignalFn,
+        SettingsSignal,
+        SettingsSignalFn,
         OnTextChangeCallback,
         OnFocusChangeCallback,
         OnSubmitCallback,
@@ -244,154 +251,21 @@ impl<
     }
 }
 
-pub fn text_input(
-    value_signal: impl Signal<Item = String> + Send + Sync + 'static,
-    on_value: impl Fn(String) -> () + Send + Sync + 'static,
-    on_submit: impl Fn(()) -> () + Send + Sync + 'static,
-) -> Arc<dyn Widget> {
-    let value_bc = value_signal.broadcast();
-    let is_focused = Mutable::new(false);
+#[derive(Clone, Copy, Debug)]
+pub struct TextInputSettings {
+    pub background_color: [f32; 4],
+    pub background_color_hovered: [f32; 4],
+    pub border_color: [f32; 4],
+    pub border_color_focused: [f32; 4],
+}
 
-    let label_value = Mutable::new("Some label".to_string());
-
-    let label = map_ref! {
-        let label = label_value.signal_cloned(),
-        let value = value_bc.signal_cloned() => {
-            if value.len() < 5 {
-                label.clone()
-            } else {
-                "The value is 5 or more characters".to_string()
-            }
+impl Default for TextInputSettings {
+    fn default() -> Self {
+        Self {
+            background_color: [0.002, 0.002, 0.002, 1.0],
+            background_color_hovered: [0.002, 0.002, 0.002, 1.0],
+            border_color: [0.02, 0.02, 0.02, 1.0],
+            border_color_focused: [0.05, 0.05, 0.3, 1.0],
         }
     }
-    .broadcast();
-
-    let lift_label = map_ref! {
-        let focused = is_focused.signal(),
-        let empty = value_bc.signal_cloned().map(|v| v.is_empty()) => {
-            *focused || !*empty
-        }
-    }
-    .broadcast();
-
-    let children = MutableVec::new_with_values(vec![
-        TextInputBuilder::new()
-            .text_value_signal(clone!(value_bc, move || value_bc.signal_cloned()))
-            .on_text_change(on_value)
-            .on_submit(on_submit)
-            .on_focus_change(clone!(is_focused, move |new_focus| {
-                is_focused.set(new_focus == FocusState::Focused)
-            }))
-            .build(),
-        AnchoredContainerBuilder::new()
-            .anchor_point(AnchorPoint::Center)
-            .child_signal(clone!(
-                label,
-                clone!(lift_label, move || {
-                    lift_label.signal().map(clone!(label, move |has_focus| {
-                        if !has_focus {
-                            LabelBuilder::new()
-                                .font_settings(FontSettings {
-                                    metrics: Metrics {
-                                        font_size: 14.0,
-                                        line_height: 14.0,
-                                    },
-                                    family: FamilyOwned::Monospace,
-                                    stretch: Default::default(),
-                                    style: Style::Italic,
-                                    weight: Weight::THIN,
-                                })
-                                .text_color([0.15, 0.15, 0.15])
-                                .text_signal(clone!(label, move || label
-                                    .signal_cloned()
-                                    .map(|v| v.into())))
-                                .build()
-                        } else {
-                            StackBuilder::new().build()
-                        }
-                    }))
-                })
-            ))
-            .build(),
-        AnchoredContainerBuilder::new()
-            .anchor_point(AnchorPoint::TopLeft)
-            .padding(Padding {
-                left: 2,
-                right: 0,
-                top: 1,
-                bottom: 0,
-            })
-            .child_signal(clone!(
-                value_bc,
-                clone!(
-                    label,
-                    clone!(lift_label, move || lift_label.signal().map(clone!(
-                        value_bc,
-                        clone!(label, move |has_focus| {
-                            if has_focus {
-                                LabelBuilder::new()
-                                    .font_settings(FontSettings {
-                                        metrics: Metrics {
-                                            font_size: 12.0,
-                                            line_height: 10.0,
-                                        },
-                                        family: FamilyOwned::Monospace,
-                                        stretch: Default::default(),
-                                        style: Style::Italic,
-                                        weight: Weight::THIN,
-                                    })
-                                    .text_color_signal(clone!(value_bc, move || value_bc
-                                        .signal_cloned()
-                                        .map(|v| {
-                                            if v.len() < 5 {
-                                                [0.15, 0.15, 0.15]
-                                            } else {
-                                                [1.0, 0.15, 0.15]
-                                            }
-                                        })))
-                                    .text_signal(clone!(label, move || label
-                                        .signal_cloned()
-                                        .map(|v| v.into())))
-                                    .build()
-                            } else {
-                                StackBuilder::new().build()
-                            }
-                        })
-                    )))
-                )
-            ))
-            .build(),
-        AnchoredContainerBuilder::new()
-            .anchor_point(AnchorPoint::CenterLeft)
-            .padding(Padding {
-                left: 4,
-                right: 0,
-                top: 0,
-                bottom: 0,
-            })
-            .child(
-                LabelBuilder::new()
-                    .font_settings(FontSettings {
-                        metrics: Metrics {
-                            font_size: 15.0,
-                            line_height: 15.0,
-                        },
-                        family: FamilyOwned::Monospace,
-                        stretch: Default::default(),
-                        style: Style::Normal,
-                        weight: Weight::NORMAL,
-                    })
-                    .text_color([0.2, 0.2, 0.2])
-                    .text_signal(clone!(value_bc, move || value_bc
-                        .signal_cloned()
-                        .map(|v| v.into())))
-                    .build(),
-            )
-            .build(),
-    ]);
-
-    StackBuilder::new()
-        .size_constraint(SizeConstraint::MaxHeight(40))
-        .children_signal_vec(clone!(children, move || children.signal_vec_cloned()))
-        .build()
 }

@@ -46,8 +46,7 @@ macro_rules! clone {
 pub struct QuirkyApp {
     pub context: QuirkyAppContext,
     pub viewport_size: Mutable<UVec2>,
-    pub widget: Arc<dyn Widget>,
-    pub resources: Mutex<QuirkyResources>,
+    pub resources: Arc<Mutex<QuirkyResources>>,
     pipeline_cache: Mutex<HashMap<Uuid, RenderPipeline>>,
     bind_group_cache: Mutex<HashMap<Uuid, BindGroup>>,
     ui_camera: Mutex<UiCamera2D>,
@@ -56,6 +55,7 @@ pub struct QuirkyApp {
     camera_bind_group_layout: BindGroupLayout,
     camera_bind_group: BindGroup,
     signal_dirty_rx: async_std::channel::Receiver<()>,
+    widget: Arc<dyn Widget>,
 }
 
 impl QuirkyApp {
@@ -63,7 +63,8 @@ impl QuirkyApp {
         device: Device,
         queue: Queue,
         surface_format: TextureFormat,
-        widget: Arc<dyn Widget>,
+        init_fn: impl FnOnce(&mut QuirkyResources, &QuirkyAppContext, TextureFormat) -> (),
+        ui_factory: impl FnOnce(Arc<Mutex<QuirkyResources>>) -> Arc<dyn Widget>,
     ) -> Self {
         let viewport_size = Mutable::new(Default::default());
         let ui_camera = UiCamera2D::default();
@@ -73,12 +74,16 @@ impl QuirkyApp {
         let (tx, rx) = async_std::channel::unbounded();
 
         let context = QuirkyAppContext::new(device, queue, viewport_size.read_only(), tx);
+        let resources: Arc<Mutex<QuirkyResources>> = Mutex::new(Default::default()).into();
+
+        init_fn(&mut resources.lock().unwrap(), &context, surface_format);
+        let widget = ui_factory(resources.clone());
 
         Self {
             context,
             viewport_size,
             widget,
-            resources: Mutex::new(Default::default()),
+            resources,
             pipeline_cache: Mutex::new(Default::default()),
             bind_group_cache: Mutex::new(Default::default()),
             ui_camera: ui_camera.into(),

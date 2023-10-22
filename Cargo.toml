@@ -5,7 +5,7 @@ async-recursion = "1.0.5"
 async-trait = "0.1.72"
 bytemuck = { version = "1.13.1", features = ["derive"] }
 futures = "0.3.28"
-futures-signals = "0.3.32"
+futures-signals = "0.3.33"
 futures-signals-utils = { git = "https://github.com/JedimEmO/dmat.git", rev = "9df70867f058667ff64b7330d1a5449ba19be5c5" }
 glam = "0.24.1"
 glyphon = { git = "https://github.com/grovesNL/glyphon.git", rev = "20f0f8fa80e0d0df4c63634ce9176fa489546ca9" }

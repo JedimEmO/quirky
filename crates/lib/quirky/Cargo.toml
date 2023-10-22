@@ -9,21 +9,13 @@ edition = "2021"
 anyhow.workspace = true
 async-trait.workspace = true
 async-std.workspace = true
-async-recursion.workspace = true
 bytemuck.workspace = true
 futures.workspace = true
 futures-signals.workspace = true
-futures-signals-utils.workspace = true
-image.workspace = true
 glam.workspace = true
-glyphon.workspace = true
-quirky-macros = { path = "../quirky-macros" }
 quirky-utils = { path = "../quirky-utils" }
 uuid.workspace = true
 wgpu.workspace = true
-wgpu_macros.workspace = true
-
-typed-builder = "0.15.1"
 
 [dev-dependencies]
 tokio.workspace = true

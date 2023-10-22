@@ -1,16 +1,29 @@
+use quirky::quirky_app_context::{QuirkyAppContext, QuirkyResources};
 use quirky::widget::Widget;
 use quirky_widgets::layouts::box_layout::{BoxLayoutBuilder, ChildDirection};
+use quirky_widgets::theming::QuirkyTheme;
 use quirky_widgets::widgets::slab::SlabBuilder;
 use quirky_winit::QuirkyWinitApp;
 use std::sync::Arc;
+use wgpu::TextureFormat;
 
 #[tokio::main]
 async fn main() {
-    let boxed_layout = thousands_layout();
-
-    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(boxed_layout).await.unwrap();
-
-    quirky_widgets::init(&quirky_app, quirky_winit_app.surface_format);
+    let (quirky_winit_app, quirky_app) = QuirkyWinitApp::new(
+        |resources: &mut QuirkyResources,
+         context: &QuirkyAppContext,
+         surface_format: TextureFormat| {
+            quirky_widgets::init(
+                resources,
+                context,
+                surface_format,
+                Some(QuirkyTheme::dark_default()),
+            )
+        },
+        |_| thousands_layout(),
+    )
+    .await
+    .unwrap();
 
     let draw_notifier = quirky_winit_app.get_trigger_draw_callback();
 
