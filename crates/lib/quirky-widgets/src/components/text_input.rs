@@ -24,10 +24,10 @@ pub fn text_input(
     let is_focused = Mutable::new(false);
 
     let text_settings = TextInputSettings {
-        background_color: theme.input_theme.background_color,
-        background_color_hovered: theme.input_theme.background_color_hovered,
-        border_color: theme.input_theme.border_color,
-        border_color_focused: theme.input_theme.border_color_focused,
+        background_color: theme.input.background_color,
+        background_color_hovered: theme.input.background_color_hovered,
+        border_color: theme.input.border_color,
+        border_color_focused: theme.input.border_color_focused,
     };
 
     let label_value = Mutable::new("Some label".to_string());
@@ -52,8 +52,8 @@ pub fn text_input(
     }
     .broadcast();
 
-    let label_color = theme.input_theme.label_color;
-    let label_color_invalid = theme.input_theme.label_color_invalid;
+    let label_color = theme.input.label_color;
+    let label_color_invalid = theme.input.label_color_invalid;
 
     let children = MutableVec::new_with_values(vec![
         TextInputBuilder::new()
@@ -163,7 +163,7 @@ pub fn text_input(
                         style: Style::Normal,
                         weight: Weight::NORMAL,
                     })
-                    .text_color(theme.input_theme.text_color)
+                    .text_color(theme.input.text_color)
                     .text_signal(clone!(value_bc, move || value_bc
                         .signal_cloned()
                         .map(|v| v.into())))

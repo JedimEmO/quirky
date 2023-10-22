@@ -1,4 +1,9 @@
-[input_theme]
+[button]
+color = [0.01, 0.01, 0.015, 1.0]
+hover_color =  [0.015, 0.015, 0.02, 1.0]
+pressed_color = [0.005, 0.005, 0.005, 1.0]
+
+[input]
 background_color = [0.01, 0.01, 0.015, 1.0]
 background_color_hovered = [0.01, 0.015, 0.02, 1.0]
 border_color = [0.05, 0.05, 0.05, 1.0]

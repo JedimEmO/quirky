@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct QuirkyInputTheme {
+pub struct InputTheme {
     pub background_color: [f32; 4],
     pub background_color_hovered: [f32; 4],
     pub border_color: [f32; 4],
@@ -15,7 +15,7 @@ pub struct QuirkyInputTheme {
     pub text_font: String,
 }
 
-impl QuirkyInputTheme {
+impl InputTheme {
     pub fn dark_default() -> Self {
         Self {
             background_color: [0.02, 0.02, 0.02, 1.0],
@@ -49,7 +49,7 @@ impl QuirkyInputTheme {
     }
 }
 
-impl Default for QuirkyInputTheme {
+impl Default for InputTheme {
     fn default() -> Self {
         Self::dark_default()
     }

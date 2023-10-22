@@ -1,6 +1,7 @@
 use crate::layouts::anchored_container::{single_child_layout_strategy, AnchorPoint};
 use crate::primitives::button_primitive::{ButtonData, ButtonPrimitive};
 use crate::styling::Padding;
+use crate::theming::QuirkyTheme;
 use async_trait::async_trait;
 use futures::{FutureExt, StreamExt};
 use futures_signals::signal::{always, Mutable, Signal, SignalExt};
@@ -100,16 +101,33 @@ impl<
 
     async fn run(self: Arc<Self>, ctx: &QuirkyAppContext) {
         let futs = self.poll_prop_futures(ctx);
-        let state_change_fut = self.button_state.signal().for_each(|data| {
-            let color = match data {
-                ButtonState::Default => [0.03, 0.03, 0.03, 1.0],
-                ButtonState::Hovered => [0.02, 0.02, 0.02, 1.0],
-                ButtonState::Pressed => [0.01, 0.01, 0.01, 0.8],
-            };
 
-            let mut data = self.button_data.get();
+        let (color, hover_color, pressed_color) = {
+            let theme_r = ctx.resources.lock().unwrap();
+            let r = theme_r.get_resource::<Mutable<QuirkyTheme>>().unwrap();
+            let theme = r.lock_ref();
+
+            (
+                theme.button.color,
+                theme.button.hover_color,
+                theme.button.pressed_color,
+            )
+        };
+
+        let color_func = move |data: ButtonState| match data {
+            ButtonState::Default => color,
+            ButtonState::Hovered => hover_color,
+            ButtonState::Pressed => pressed_color,
+        };
+
+        let button_data = self.button_data.clone();
+
+        let state_change_fut = self.button_state.signal().for_each(move |data| {
+            let color = color_func(data);
+
+            let mut data = button_data.get();
             data.color = color;
-            self.button_data.set(data);
+            button_data.set(data);
 
             async move { ctx.signal_redraw().await }
         });

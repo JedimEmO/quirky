@@ -35,7 +35,43 @@ async fn main() {
                 context,
                 surface_format,
                 Some(QuirkyTheme::dark_default()),
-            )
+            );
+
+            let mutable_theme = resources
+                .get_resource::<Mutable<QuirkyTheme>>()
+                .unwrap()
+                .clone();
+
+            tokio::spawn(clone!(mutable_theme, async move {
+                let inot = inotify::Inotify::init().unwrap();
+                let current_dir = env::current_dir()
+                    .expect("failed to get current dir")
+                    .join("theme.toml");
+
+                inot.watches()
+                    .add(current_dir, WatchMask::MODIFY)
+                    .expect("failed to add watch");
+
+                let buffer = [0u8; 4098];
+
+                let reload = move || {
+                    let current_dir = env::current_dir()
+                        .expect("failed to get current dir")
+                        .join("theme.toml");
+                    let theme = fs::read_to_string(current_dir.as_path()).unwrap();
+                    let theme: QuirkyTheme = toml::from_str(&theme).unwrap();
+                    mutable_theme.set(theme);
+
+                    async move {}
+                };
+
+                let _ = reload();
+
+                inot.into_event_stream(buffer)
+                    .unwrap()
+                    .for_each(move |_event| reload())
+                    .await;
+            }));
         },
         simple_panel_layout,
     )
@@ -114,39 +150,12 @@ fn stack_panel(text: Mutable<String>) -> Arc<dyn Widget> {
 
 fn simple_panel_layout(resources: Arc<Mutex<QuirkyResources>>) -> Arc<dyn Widget> {
     let text = Mutable::new("".to_string());
-
     let mutable_theme = resources
         .lock()
         .unwrap()
         .get_resource::<Mutable<QuirkyTheme>>()
         .unwrap()
         .clone();
-
-    tokio::spawn(clone!(mutable_theme, async move {
-        let inot = inotify::Inotify::init().unwrap();
-        let current_dir = env::current_dir()
-            .expect("failed to get current dir")
-            .join("theme.toml");
-        inot.watches()
-            .add(current_dir, WatchMask::MODIFY)
-            .expect("failed to add watch");
-
-        let buffer = [0u8; 4098];
-
-        inot.into_event_stream(buffer)
-            .unwrap()
-            .for_each(move |_event| {
-                clone!(mutable_theme, async move {
-                    let current_dir = env::current_dir()
-                        .expect("failed to get current dir")
-                        .join("theme.toml");
-                    let theme = fs::read_to_string(current_dir.as_path()).unwrap();
-                    let theme: QuirkyTheme = toml::from_str(&theme).unwrap();
-                    mutable_theme.set(theme);
-                })
-            })
-            .await;
-    }));
 
     BoxLayoutBuilder::new()
         .children_signal_vec(clone!(text, move || {

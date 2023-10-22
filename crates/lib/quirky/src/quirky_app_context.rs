@@ -6,7 +6,7 @@ use futures_signals::signal::ReadOnlyMutable;
 use glam::UVec2;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 use wgpu::{Device, Queue};
 
@@ -48,6 +48,7 @@ pub struct QuirkyAppContext {
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub viewport_size: ReadOnlyMutable<UVec2>,
+    pub resources: Arc<Mutex<QuirkyResources>>,
     signal_dirty: Sender<()>,
     widget_event_subscriptions:
         std::sync::Mutex<HashMap<Uuid, futures::channel::mpsc::Sender<WidgetEvent>>>,
@@ -60,12 +61,14 @@ impl QuirkyAppContext {
         queue: Queue,
         viewport_size: ReadOnlyMutable<UVec2>,
         signal_dirty: Sender<()>,
+        resources: Arc<Mutex<QuirkyResources>>,
     ) -> Self {
         Self {
             device: device.into(),
             queue: queue.into(),
             widget_event_subscriptions: Default::default(),
             viewport_size,
+            resources,
             signal_dirty,
             focused_widget_id: Default::default(),
         }

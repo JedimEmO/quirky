@@ -73,8 +73,14 @@ impl QuirkyApp {
 
         let (tx, rx) = async_std::channel::unbounded();
 
-        let context = QuirkyAppContext::new(device, queue, viewport_size.read_only(), tx);
         let resources: Arc<Mutex<QuirkyResources>> = Mutex::new(Default::default()).into();
+        let context = QuirkyAppContext::new(
+            device,
+            queue,
+            viewport_size.read_only(),
+            tx,
+            resources.clone(),
+        );
 
         init_fn(&mut resources.lock().unwrap(), &context, surface_format);
         let widget = ui_factory(resources.clone());
