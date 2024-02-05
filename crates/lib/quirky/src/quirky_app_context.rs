@@ -57,8 +57,8 @@ pub struct QuirkyAppContext {
 
 impl QuirkyAppContext {
     pub fn new(
-        device: Device,
-        queue: Queue,
+        device: Arc<Device>,
+        queue: Arc<Queue>,
         viewport_size: ReadOnlyMutable<UVec2>,
         signal_dirty: Sender<()>,
         resources: Arc<Mutex<QuirkyResources>>,

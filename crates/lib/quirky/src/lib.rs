@@ -29,7 +29,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Device, Queue,
-    RenderPipeline, ShaderStages, Surface, TextureFormat,
+    RenderPipeline, ShaderStages, Surface, SurfaceTexture, TextureFormat, TextureView,
 };
 use widget::Widget;
 use widgets::events::WidgetEvent;
@@ -60,12 +60,15 @@ pub struct QuirkyApp {
 
 impl QuirkyApp {
     pub fn new(
-        device: Device,
-        queue: Queue,
+        device: impl Into<Arc<Device>>,
+        queue: impl Into<Arc<Queue>>,
         surface_format: TextureFormat,
         init_fn: impl FnOnce(&mut QuirkyResources, &QuirkyAppContext, TextureFormat) -> (),
         ui_factory: impl FnOnce(Arc<Mutex<QuirkyResources>>) -> Arc<dyn Widget>,
     ) -> Self {
+        let device = device.into();
+        let queue = queue.into();
+
         let viewport_size = Mutable::new(Default::default());
         let ui_camera = UiCamera2D::default();
         let (camera_buffer, camera_bind_group_layout, camera_bind_group) =
@@ -143,7 +146,7 @@ impl QuirkyApp {
         }
     }
 
-    pub fn draw(&self, surface: &Surface) -> anyhow::Result<()> {
+    pub fn draw(&self, view: &TextureView) -> anyhow::Result<()> {
         let camera_uniform = self.ui_camera.lock().unwrap().create_camera_uniform();
         let screen_resolution = self.context.viewport_size.get();
 
@@ -153,91 +156,80 @@ impl QuirkyApp {
             bytemuck::cast_slice(&[camera_uniform]),
         );
 
-        if let Ok(output) = surface.get_current_texture().map_err(|e| {
-            println!("surface error: {:?}", e);
-            e
-        }) {
-            let view = output
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder =
+            self.context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("hi there"),
+                });
 
-            let mut encoder =
-                self.context
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("hi there"),
-                    });
+        let mut pipeline_cache = self.pipeline_cache.lock().unwrap();
+        let mut bind_group_cache = self.bind_group_cache.lock().unwrap();
+        let mut resources = self.resources.lock().unwrap();
+        let mut out_list = VecDeque::with_capacity(10000);
 
-            let mut pipeline_cache = self.pipeline_cache.lock().unwrap();
-            let mut bind_group_cache = self.bind_group_cache.lock().unwrap();
-            let mut resources = self.resources.lock().unwrap();
-            let mut out_list = VecDeque::with_capacity(10000);
-
-            {
-                let mut paint_context = PrepareContext {
-                    resources: resources.borrow_mut(),
-                    device: &self.context.device,
-                    queue: &self.context.queue,
-                    surface_format: self.surface_format,
-                    pipeline_cache: pipeline_cache.borrow_mut(),
-                    bind_group_cache: bind_group_cache.borrow_mut(),
-                    camera_bind_group_layout: &self.camera_bind_group_layout,
-                };
-
-                next_drawable_list(
-                    &self.widget,
-                    &self.context,
-                    &mut paint_context,
-                    &mut out_list,
-                );
-
-                for drawable in out_list.iter_mut() {
-                    for d in drawable.1.iter_mut() {
-                        d.prepare(&mut paint_context);
-                    }
-                }
-            }
-            let render_context = RenderContext {
+        {
+            let mut paint_context = PrepareContext {
                 resources: resources.borrow_mut(),
-                camera_bind_group: &self.camera_bind_group,
-                screen_resolution,
-                pipeline_cache: &pipeline_cache,
-                bind_group_cache: &bind_group_cache,
+                device: &self.context.device,
+                queue: &self.context.queue,
+                surface_format: self.surface_format,
+                pipeline_cache: pipeline_cache.borrow_mut(),
+                bind_group_cache: bind_group_cache.borrow_mut(),
+                camera_bind_group_layout: &self.camera_bind_group_layout,
             };
 
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: None,
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
-                                a: 1.0,
-                            }),
-                            store: true,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                });
+            next_drawable_list(
+                &self.widget,
+                &self.context,
+                &mut paint_context,
+                &mut out_list,
+            );
 
-                out_list.iter().for_each(|d| {
-                    d.1.iter().for_each(|d2| {
-                        d2.draw(&mut pass, &render_context);
-                    });
-                });
+            for drawable in out_list.iter_mut() {
+                for d in drawable.1.iter_mut() {
+                    d.prepare(&mut paint_context);
+                }
             }
+        }
+        let render_context = RenderContext {
+            resources: resources.borrow_mut(),
+            camera_bind_group: &self.camera_bind_group,
+            screen_resolution,
+            pipeline_cache: &pipeline_cache,
+            bind_group_cache: &bind_group_cache,
+        };
 
-            self.context.queue.submit(iter::once(encoder.finish()));
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
 
-            output.present();
+            out_list.iter().for_each(|d| {
+                d.1.iter().for_each(|d2| {
+                    d2.draw(&mut pass, &render_context);
+                });
+            });
+        }
 
-            for d in out_list {
-                d.2.set_cached_primitives(Some(d.1));
-            }
+        self.context.queue.submit(iter::once(encoder.finish()));
+
+        for d in out_list {
+            d.2.set_cached_primitives(Some(d.1));
         }
 
         Ok(())

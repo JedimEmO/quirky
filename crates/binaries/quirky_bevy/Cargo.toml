@@ -1,0 +1,16 @@
+[package]
+name = "quirky_bevy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.72"
+bevy = { version = "0.12.1" }
+cosmic-text.workspace = true
+futures-signals.workspace = true
+quirky = { path = "../../lib/quirky" }
+quirky-widgets = { path = "../../lib/quirky-widgets" }
+rand = "0.8.5"
+wgpu.workspace = true

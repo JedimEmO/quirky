@@ -186,7 +186,18 @@ impl QuirkyWinitApp {
                     self.window.request_redraw();
                 }
                 Event::RedrawRequested(_window_id) => {
-                    let _ = self.quirky_app.draw(&self.surface);
+                    let output = self
+                        .surface
+                        .get_current_texture()
+                        .expect("failed to get current texture");
+
+                    let view = output
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+
+                    let _ = self.quirky_app.draw(&view);
+
+                    output.present();
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::ModifiersChanged(state) => {
